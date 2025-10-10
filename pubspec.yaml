@@ -1,0 +1,37 @@
+name: memory_estimator
+description: A sample command-line application.
+version: 0.1.0-rc1
+publish_to: 'none'
+# repository: https://github.com/my_org/my_repo
+
+environment:
+  sdk: '>=3.4.3 <4.0.0'
+  flutter: ">=3.24.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  json_annotation: ^4.9.0
+  # webapp_core:
+  #  git:
+    #  ref: main
+    #  url: git@github.com:tercen/webapp_lib
+    #  path: webapp_core
+
+  json_serializable: ^6.9.0
+  json_string: ^3.0.1
+
+dev_dependencies:
+  lints: ^4.0.0
+  test: ^1.24.0
+  build_runner: ^2.4.13
+  json_serializable: ^6.9.0
+  webapp_core:
+    path: ../webapp_lib/webapp_core
+
+
+
+flutter:
+  assets:
+    - assets/base_test.json
+#     - assets/workflow_steps.json

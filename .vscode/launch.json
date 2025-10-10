@@ -1,0 +1,23 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "estimator (debug)",
+            "request": "launch",
+            "type": "dart",
+            "program": "lib/main.dart",
+            "flutterMode": "debug",
+            "args": [
+                "-d", "chrome",
+                "--dart-define", "PROJECT_ID=629137e152adbe62fad89e98ec0093e4", 
+                "--dart-define", "DEV=true", 
+                "--dart-define", "TERCEN_URL=http://127.0.0.1:5400",
+                "--dart-define", "TERCEN_TOKEN=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwczovL3RlcmNlbi5jb20iLCJleHAiOjE3NjI2MDU5OTEsImRhdGEiOnsiZCI6IiIsInUiOiJ0aGlhZ28ubW9udGVpcm8iLCJlIjoxNzYyNjA1OTkxNDM5fX0.3jYJWTVG8HBzlNVZeFTDtJs6ZsOrI3dMPkW2N8Z4k9c"
+            ],
+            "console": "terminal"
+        }
+    ]
+}

@@ -1,0 +1,14 @@
+{
+    "testCases":[
+        {
+           "workflowId":"629137e152adbe62fad89e98ec008812",
+           "stepId":"ebda5081-aae4-45fc-b91b-f7b4b19d402a",
+           "downsample":0
+        },
+        {
+           "workflowId":"629137e152adbe62fad89e98ec008812",
+           "stepId":"ebda5081-aae4-45fc-b91b-f7b4b19d402a",
+           "downsample":50
+        }
+    ]
+}
