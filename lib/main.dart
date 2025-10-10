@@ -1,8 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:developer';
 import 'dart:html' as html;
 import 'dart:math';
-
+import 'package:uuid/uuid.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:json_string/json_string.dart';
@@ -13,8 +14,12 @@ import 'package:sci_tercen_client/sci_client.dart' as sci;
 import 'package:sci_tercen_client/sci_client_service_factory.dart' as tercen;
 import 'package:webapp_core/runner/utils/workflow/workflow_settings_utils.dart';
 import 'package:webapp_core/runner/utils/workflow/workflow_filter_utils.dart';
+import 'package:webapp_core/runner/utils/workflow/workflow_input_utils.dart';
 import 'package:webapp_core/service/workflow_data_service.dart';
+import 'package:webapp_core/service/file_data_service.dart';
+import 'package:webapp_core/service/project_data_service.dart';
 import 'package:webapp_core/runner/workflow_runner.dart';
+import 'package:webapp_utils/functions/string_utils.dart';
 
 void main(List<String> arguments) async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -64,6 +69,9 @@ class MemoryEstimator {
     var workflow = await runner.copyToProject(projectId: projectId, workflowId: workflowId, teamName: "team1", workflowName: "New Workflow name");
     done();
 
+    final dataRel = await _createFakeCrabsData(projectId: projectId, filename: "SynthData.csv", owner: workflow.acl.owner);
+    //TODO pass to config
+    workflow = WorkflowInputUtils().relationToTableStep(workflow: workflow, stepId: "0396dda7-fae2-4ffd-865b-4cee6a25cb06", relation: dataRel);
     workflow =  WorkflowFilterUtils().updateFilterValue(filterName: "SamplePct", workflow: workflow, stepId: stepId, newValue: test.downsample.toString(), factorName: "ds00.random_percentage" );
     workflow = await runner.saveWorkflow(workflow: workflow);
 
@@ -96,7 +104,7 @@ class MemoryEstimator {
       );
 
 
-      workflow = await runner.runWorkflow(workflow: workflow, persistentEvents: false, saveAfterRun: false, stepsToReset: [stepId], stepsToRun: [stepId]);
+      workflow = await runner.runWorkflow(workflow: workflow, persistentEvents: false, saveAfterRun: false, stepsToReset: ["f347ba91-2f19-45c2-9772-08814a1e2159", stepId], stepsToRun: [stepId]);
       final workflowStatus = getWorkflowState(workflow: workflow);
       if( workflowStatus == "SUCCESS"){
         logAdd("Memory is sufficient, trying with less memory");
@@ -258,5 +266,64 @@ class MemoryEstimator {
 
     return "SUCCESS";
   }
+
+  Future<sci.Relation> _createFakeCrabsData({required String projectId, required String filename, required String owner,
+      int nObs = 1000, int nVariable =4, int nSp = 4}) async{
+    // sp	sex	index	observation	variable	measurement
+    // (character)	(character)	(numeric)	(numeric)	(character)	(numeric)
+
+    //TODO Take into account file path
+    // var projObjects =await ProjectDataService().fetchProjectObjects(projectId: projectId);
+    // var obj = projObjects.where((obj) => obj.name == filename).firstOrNull;
+    // if( obj != null ){
+    //   return obj.id;
+    // }
+
+    var uniqueSp = <String>[];
+    var uniqueVariable = <String>[];
+    var uniqueSex = <String>['M', 'F'];
+
+    for( var i = 0; i < nSp; i++){
+      uniqueSp.add( StringUtils.getRandomString(3) );
+    }
+    for( var i = 0; i < nVariable; i++){
+      uniqueVariable.add( StringUtils.getRandomString(3) );
+    }
+
+    var fileText = "sp,sex,index,observation,variable,measurement\n";
+    var index =0;
+    for( var oi = 0; oi < nObs; oi++){
+      for( var si = 0; si < nSp; si++){
+        for( var vi = 0; vi < nVariable; vi++){
+          for( var gi = 0; gi < uniqueSex.length; gi++){
+            var meas = Random().nextDouble() * 25 * (gi == 0 ? 1-Random().nextDouble()/5 : 1.0); 
+
+            fileText = "$fileText'${uniqueSp[si]}','${uniqueSex[gi]}',${index}.0,${oi}.0,'${uniqueVariable[vi]}',$meas\n";
+            index = index + 1;
+          }
+        }
+      }
+    }
+
+    var schemaId = await FileDataService().uploadFileAsTable2(projectId: projectId, filename: filename, owner: owner, data: utf8.encode(fileText));
+    var sch = await tercen.ServiceFactory().tableSchemaService.get(schemaId);
+    
+    final colNames = sch.columns.map((col) => col.name).toSet().toList();
+    
+
+    //TODO     
+    var refRel = sci.SimpleRelation()
+      ..id = schemaId;
+
+    var renameRel = sci.RenameRelation.json({
+      "id": "rename_${Uuid().v4()}",
+      "inNames": colNames,
+      "outNames": colNames,
+      "relation": refRel.toJson()
+    });
+
+    return renameRel;
+
+}
 
 }

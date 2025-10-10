@@ -28,7 +28,8 @@ dev_dependencies:
   json_serializable: ^6.9.0
   webapp_core:
     path: ../webapp_lib/webapp_core
-
+  webapp_utils:
+    path: ../webapp_lib/webapp_utils
 
 
 flutter:
