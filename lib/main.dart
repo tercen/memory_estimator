@@ -72,7 +72,7 @@ class MemoryEstimator {
     final dataRel = await _createFakeCrabsData(projectId: projectId, filename: "SynthData.csv", owner: workflow.acl.owner);
     //TODO pass to config
     workflow = WorkflowInputUtils().relationToTableStep(workflow: workflow, stepId: "0396dda7-fae2-4ffd-865b-4cee6a25cb06", relation: dataRel);
-    workflow =  WorkflowFilterUtils().updateFilterValue(filterName: "SamplePct", workflow: workflow, stepId: stepId, newValue: test.downsample.toString(), factorName: "ds00.random_percentage" );
+    workflow =  WorkflowFilterUtils().updateFilterValue(filterName: "SamplePct", workflow: workflow, stepId: stepId, newValue: test.downsample.toString(), factorName: "ds0.random_percentage" );
     workflow = await runner.saveWorkflow(workflow: workflow);
 
     await updateCubeQueryTask(workflow: workflow, stepId: stepId, removeRows: true, removeColumns: true);
@@ -89,7 +89,7 @@ class MemoryEstimator {
     var ram = 10 * mb;
 
 
-    double maxRam = 32000*mb;
+    double maxRam = 12000*mb;
     var currentMax = maxRam;
     var currentMin = 0.0;
     var stopThr = 50*mb;
@@ -143,22 +143,42 @@ class MemoryEstimator {
     }
 
     //TODO Move to WorkflowDataService
-    await tercen.ServiceFactory().workflowService.delete(workflow.id, workflow.rev);
+    // await tercen.ServiceFactory().workflowService.delete(workflow.id, workflow.rev);
     return sizeMap;
+  }
+
+  Future<TestSuite> fetchTestSuite({required String projectId}) async {
+    final objs = await ProjectDataService().fetchProjectObjects(projectId: projectId);
+    final testFile = objs.where((obj) => obj.name == "test_suite.json").firstOrNull;
+
+    if( testFile == null ){
+      throw sci.ServiceError(404, "test.not.found", "Could not find file test_suite.json in project $projectId");
+    }
+
+    final json = await FileDataService().downloadFileLinesAsString(testFile.id, numLines: 10000);
+    return TestSuite.fromJson(JsonString(json.join("\n")).decodedValueAsMap);
   }
 
   Future<void> runTests() async {
     
     partialStopwatch.start();
     final serviceUri = const String.fromEnvironment("TERCEN_URL", defaultValue: "http://127.0.0.1:5400");
-    final projectId = const String.fromEnvironment("PROJECT_ID", defaultValue: "b6f4910eac19c2cdb3d318ef0a1fae31");
-    final testSuite = TestSuite.fromJson(JsonString(await rootBundle.loadString("assets/base_test.json")).decodedValueAsMap);  
+    final projectId = const String.fromEnvironment("PROJECT_ID", defaultValue: "");
+
+    // final json  = await rootBundle.loadString("assets/base_test.json");
+    // final testSuite = TestSuite.fromJson(JsonString(json).decodedValueAsMap);  
     log("Initializing memory estimator with:\n\t * Service URL: ${serviceUri}\n\t * Project Id: ${projectId}");
     AppSession appSession = AppSession();
     await appSession.initSession();
     final sess = appSession.session;
-    logAdd("Connected to Tercen ${sess.serverVersion.major}.${sess.serverVersion.minor}.${sess.serverVersion.patch}");
+    logAdd("Connected to Tercen ${sess.serverVersion.major}.${sess.serverVersion.minor}.${sess.serverVersion.patch} as ${sess.user.id}");
     done();
+
+    log("Downloading test suite");
+    final testSuite = await fetchTestSuite(projectId: projectId);
+    done();
+        // final json  = await rootBundle.loadString("assets/base_test.json");
+    // final testSuite = TestSuite.fromJson(JsonString(json).decodedValueAsMap);  
 
     bool firstRun = true;
     var est = "";
@@ -268,7 +288,7 @@ class MemoryEstimator {
   }
 
   Future<sci.Relation> _createFakeCrabsData({required String projectId, required String filename, required String owner,
-      int nObs = 1000, int nVariable =4, int nSp = 4}) async{
+      int nObs = 500, int nVariable =4, int nSp = 4}) async{
     // sp	sex	index	observation	variable	measurement
     // (character)	(character)	(numeric)	(numeric)	(character)	(numeric)
 
