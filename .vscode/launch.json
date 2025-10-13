@@ -11,13 +11,12 @@
             "program": "lib/main.dart",
             "flutterMode": "debug",
             "args": [
-                "-d", "chrome",
-                "--dart-define", "PROJECT_ID=629137e152adbe62fad89e98ec0093e4", 
+                "--web-hostname", "127.0.0.1",
+                "--dart-define", "PROJECT_ID=4483c7f2cea36b455782f66f0e00b371", 
                 "--dart-define", "DEV=true", 
                 "--dart-define", "TERCEN_URL=http://127.0.0.1:5400",
-                "--dart-define", "TERCEN_TOKEN=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwczovL3RlcmNlbi5jb20iLCJleHAiOjE3NjI2MDU5OTEsImRhdGEiOnsiZCI6IiIsInUiOiJ0aGlhZ28ubW9udGVpcm8iLCJlIjoxNzYyNjA1OTkxNDM5fX0.3jYJWTVG8HBzlNVZeFTDtJs6ZsOrI3dMPkW2N8Z4k9c"
-            ],
-            "console": "terminal"
+                "--dart-define", "TERCEN_TOKEN=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwczovL3RlcmNlbi5jb20iLCJleHAiOjE3NjI5Njg2NDMsImRhdGEiOnsiZCI6IiIsInUiOiJ0ZXN0IiwiZSI6MTc2Mjk2ODY0MzE5Nn19.s3ZwaiQZRC0cDyWnbMdqgVlSYvgyT8D26kTDTmKqvQA"
+            ]
         }
     ]
 }
