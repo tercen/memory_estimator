@@ -20,203 +20,265 @@ import 'package:webapp_core/service/file_data_service.dart';
 import 'package:webapp_core/service/project_data_service.dart';
 import 'package:webapp_core/runner/workflow_runner.dart';
 import 'package:webapp_utils/functions/string_utils.dart';
+import 'package:webapp_core/runner/utils/cache_object.dart';
 
 void main(List<String> arguments) async {
   WidgetsFlutterBinding.ensureInitialized();
 
   final estimator = MemoryEstimator();
   print("Starting memory estimator");
-  try{
+  try {
     await estimator.runTests();
-  }catch (e){
+  } catch (e) {
     print("Failed to initialize -- $e ");
   }
-  
+
   // await estimator.init().then((_) => estimator.runEstimation());
-  
+
   // Close browser window after execution completes
   html.window.close();
 }
-
-
-
 
 class MemoryEstimator {
   // final Stopwatch totalStopwatch = Stopwatch();
   final Stopwatch partialStopwatch = Stopwatch();
   MemoryEstimator();
 
-  void done(){
-    print( "\t ... DONE in ${partialStopwatch.elapsedMilliseconds} ms \n" );
+  void done() {
+    print("\t ... DONE in ${partialStopwatch.elapsedMilliseconds} ms \n");
     partialStopwatch.reset();
   }
 
-  void logAdd(String message){
-    print( "\t$message" );
+  void logAdd(String message) {
+    print("\t$message");
   }
 
-  void log(String message){
-    print( "[${DateTime.now().toIso8601String()} ] $message" );
+  void log(String message) {
+    print("[${DateTime.now().toIso8601String()} ] $message");
   }
 
-  Future<Map<String,double>> _runTestCase({required String projectId, required TestCase test}) async{
+  Future<Map<String, double>> _runTestCase(
+      {required String projectId,
+      required TestCase test,
+      required String tableStepId}) async {
     final workflowId = test.workflowId;
     final stepId = test.stepId;
 
-
     log("Copying workflow to project");
     final runner = WorkflowRunner();
-    var workflow = await runner.copyToProject(projectId: projectId, workflowId: workflowId, teamName: "team1", workflowName: "New Workflow name");
+    //TODO Update here as well
+    var workflow = await runner.copyToProject(
+        projectId: projectId,
+        workflowId: workflowId,
+        teamName: "team1",
+        workflowName: "New Workflow name");
     done();
 
-    final dataRel = await _createFakeCrabsData(projectId: projectId, filename: "SynthData.csv", owner: workflow.acl.owner);
-    //TODO pass to config
-    workflow = WorkflowInputUtils().relationToTableStep(workflow: workflow, stepId: "0396dda7-fae2-4ffd-865b-4cee6a25cb06", relation: dataRel);
-    workflow =  WorkflowFilterUtils().updateFilterValue(filterName: "SamplePct", workflow: workflow, stepId: stepId, newValue: test.downsample.toString(), factorName: "ds0.random_percentage" );
+    final dataRel = await _createFakeCrabsData(
+        projectId: projectId,
+        filename: "SynthData.csv",
+        nObs: test.nObs as int,
+        nSp: test.nSp as int,
+        nVariable: test.nVariable as int,
+        owner: workflow.acl.owner);
+    //TODO on the train.
+    // * Table step to the config file
+    // * Pass parameters to TestCase class
+    // * Add basic filter update to use case (maybe)
+    workflow = WorkflowInputUtils().relationToTableStep(
+        workflow: workflow, stepId: tableStepId, relation: dataRel);
+    workflow = WorkflowFilterUtils().updateFilterValue(
+        filterName: "SamplePct",
+        workflow: workflow,
+        stepId: stepId,
+        newValue: test.downsample.toString(),
+        factorName: "ds0.random_percentage");
     workflow = await runner.saveWorkflow(workflow: workflow);
 
-    await updateCubeQueryTask(workflow: workflow, stepId: stepId, removeRows: true, removeColumns: true);
+    await updateCubeQueryTask(
+        workflow: workflow,
+        stepId: stepId,
+        removeRows: true,
+        removeColumns: true);
     final sizeMap = <String, double>{};
-    sizeMap.addAll(  await extractProjectionSize(workflow: workflow, stepId: stepId, currentMap: sizeMap) );
-
+    sizeMap.addAll(await extractProjectionSize(
+        workflow: workflow, stepId: stepId, currentMap: sizeMap));
 
     log("Starting memory estimation for:");
-    
 
     bool isFinished = false;
     final mb = 1e6;
-    
+
     var ram = 10 * mb;
 
-
-    double maxRam = 12000*mb;
+    double maxRam = 12000 * mb;
     var currentMax = maxRam;
     var currentMin = 0.0;
-    var stopThr = 50*mb;
+    var stopThr = 50 * mb;
 
-    while(!isFinished){
-      logAdd("Testing ${ram/mb} mb");
+    for( var opSetting in test.settings ){
+      workflow = WorkflowSettingsUtils().updateSetting(workflow: workflow, stepId: stepId, settingName: opSetting.name, value: opSetting.value);
+    }
+    
+    workflow = await runner.saveWorkflow(workflow: workflow);
+    while (!isFinished) {
+      logAdd("Testing ${ram / mb} mb");
       workflow = WorkflowSettingsUtils.updateEnv(
-        workflow: workflow,
-        stepId: stepId,
-        env: "ram",
-        value: "$ram"
-      );
+          workflow: workflow, stepId: stepId, env: "ram", value: "$ram");
 
-
-      workflow = await runner.runWorkflow(workflow: workflow, persistentEvents: false, saveAfterRun: false, stepsToReset: ["f347ba91-2f19-45c2-9772-08814a1e2159", stepId], stepsToRun: [stepId]);
+      //Reset all data steps
+      workflow = await runner.runWorkflow(
+          workflow: workflow,
+          persistentEvents: false,
+          saveAfterRun: false,
+          stepsToReset: workflow.steps
+              .whereType<sci.DataStep>()
+              .map((step) => step.id)
+              .toList(),
+          stepsToRun: [stepId]);
       final workflowStatus = getWorkflowState(workflow: workflow);
-      if( workflowStatus == "SUCCESS"){
+      if (workflowStatus == "SUCCESS") {
         logAdd("Memory is sufficient, trying with less memory");
         currentMax = ram;
-        final memAdjust = (currentMax-currentMin)/2;
-        if( memAdjust < stopThr){
-          logAdd("Minimum delta reached. Stopping.");  
+        final memAdjust = (currentMax - currentMin) / 2;
+        if (memAdjust < stopThr) {
+          logAdd("Minimum delta reached. Stopping.");
           break;
         }
         ram = ram - memAdjust;
-      }else{
+      } else {
         logAdd("Memory is insufficient, increasing memory");
         currentMin = ram;
-        final memAdjust = (currentMax-currentMin)/2;
-        
-        if( memAdjust < stopThr){
-          logAdd("Minimum delta reached. Stopping.");  
+        final memAdjust = (currentMax - currentMin) / 2;
+
+        if (memAdjust < stopThr) {
+          logAdd("Minimum delta reached. Stopping.");
           break;
         }
         ram = ram + memAdjust;
-        if( ram > maxRam){
-          print("Estimated memory would be higher than the maximum of ${maxRam/mb}mb. Abort");
+        if (ram > maxRam) {
+          print(
+              "Estimated memory would be higher than the maximum of ${maxRam / mb}mb. Abort");
           break;
         }
-        
       }
-
     }
 
-    log("Estimated ${currentMax/mb}MB are needed for:");
-    
+    log("Estimated ${currentMax / mb}MB are needed for:");
+    //TODO add settings to the table here
+    for( var setting in test.settings ){
+      if( setting.type == "bool"){
+        sizeMap[setting.name] =   setting.value == "true" ? 1 : 0;  
+      }else{
+        sizeMap[setting.name] =   double.parse( setting.value);
+      }
+      
+    }
     sizeMap["ram"] = currentMax;
 
-    for( var entry in sizeMap.entries ){
+    for (var entry in sizeMap.entries) {
       logAdd(">> ${entry.key} : ${entry.value}");
     }
 
     //TODO Move to WorkflowDataService
-    // await tercen.ServiceFactory().workflowService.delete(workflow.id, workflow.rev);
+    await tercen.ServiceFactory().workflowService.delete(workflow.id, workflow.rev);
+    CacheObject().clearCache();
+    final objs = await ProjectDataService().fetchProjectObjects(projectId: projectId);
+    final dataObj = objs.where((obj) => obj.name == "SynthData.csv").firstOrNull;
+    if( dataObj != null ){
+      await tercen.ServiceFactory().tableSchemaService.delete(dataObj.id, dataObj.rev);
+    }
     return sizeMap;
   }
 
   Future<TestSuite> fetchTestSuite({required String projectId}) async {
-    final objs = await ProjectDataService().fetchProjectObjects(projectId: projectId);
-    final testFile = objs.where((obj) => obj.name == "test_suite.json").firstOrNull;
+    final objs =
+        await ProjectDataService().fetchProjectObjects(projectId: projectId);
+    final testFile =
+        objs.where((obj) => obj.name == "test_suite.json").firstOrNull;
 
-    if( testFile == null ){
-      throw sci.ServiceError(404, "test.not.found", "Could not find file test_suite.json in project $projectId");
+    if (testFile == null) {
+      throw sci.ServiceError(404, "test.not.found",
+          "Could not find file test_suite.json in project $projectId");
     }
 
-    final json = await FileDataService().downloadFileLinesAsString(testFile.id, numLines: 10000);
+    final json = await FileDataService()
+        .downloadFileLinesAsString(testFile.id, numLines: 10000);
+
     return TestSuite.fromJson(JsonString(json.join("\n")).decodedValueAsMap);
   }
 
   Future<void> runTests() async {
-    
     partialStopwatch.start();
-    final serviceUri = const String.fromEnvironment("TERCEN_URL", defaultValue: "http://127.0.0.1:5400");
-    final projectId = const String.fromEnvironment("PROJECT_ID", defaultValue: "");
+    final serviceUri = const String.fromEnvironment("TERCEN_URL",
+        defaultValue: "http://127.0.0.1:5400");
+    final projectId =
+        const String.fromEnvironment("PROJECT_ID", defaultValue: "");
 
     // final json  = await rootBundle.loadString("assets/base_test.json");
-    // final testSuite = TestSuite.fromJson(JsonString(json).decodedValueAsMap);  
+    // final testSuite = TestSuite.fromJson(JsonString(json).decodedValueAsMap);
     log("Initializing memory estimator with:\n\t * Service URL: ${serviceUri}\n\t * Project Id: ${projectId}");
     AppSession appSession = AppSession();
     await appSession.initSession();
     final sess = appSession.session;
-    logAdd("Connected to Tercen ${sess.serverVersion.major}.${sess.serverVersion.minor}.${sess.serverVersion.patch} as ${sess.user.id}");
+    logAdd(
+        "Connected to Tercen ${sess.serverVersion.major}.${sess.serverVersion.minor}.${sess.serverVersion.patch} as ${sess.user.id}");
     done();
 
     log("Downloading test suite");
     final testSuite = await fetchTestSuite(projectId: projectId);
     done();
-        // final json  = await rootBundle.loadString("assets/base_test.json");
-    // final testSuite = TestSuite.fromJson(JsonString(json).decodedValueAsMap);  
+    // final json  = await rootBundle.loadString("assets/base_test.json");
+    // final testSuite = TestSuite.fromJson(JsonString(json).decodedValueAsMap);
 
     bool firstRun = true;
     var est = "";
-    for( var test in testSuite.testCases ){
-      final map = await _runTestCase(projectId: projectId, test: test);
-      if( firstRun ){
-        for( var entry in map.entries ){
+    for (var test in testSuite.testCases) {
+      final map = await _runTestCase(
+          projectId: projectId, test: test, tableStepId: testSuite.tableId);
+      if (firstRun) {
+        for (var entry in map.entries) {
           est = "$est\t${entry.key}";
-        }  
-        est="$est\n";
+        }
+        est = "$est\n";
         firstRun = false;
       }
-      for( var entry in map.entries ){
+      for (var entry in map.entries) {
         est = "$est\t${entry.value}";
       }
-      est="$est\n";
+      est = "$est\n";
     }
 
     print("==============================");
     print("MEMORY ESTIMATION TABLE");
     print("==============================\n");
     print(est);
-
-
-
-    
   }
 
-  
-  Future< Map<String, double> > extractProjectionSize({required sci.Workflow workflow, required String stepId, required Map<String, double> currentMap}) async {
-    final step = workflow.steps.whereType<sci.DataStep>().where((step) => step.id == stepId).firstOrNull;
+  Future<Map<String, double>> extractProjectionSize(
+      {required sci.Workflow workflow,
+      required String stepId,
+      required Map<String, double> currentMap}) async {
+    final step = workflow.steps
+        .whereType<sci.DataStep>()
+        .where((step) => step.id == stepId)
+        .firstOrNull;
 
-    if( step == null ){
-      throw sci.ServiceError(500, "step.not.found", "Step $step not found in workflow ${workflow.name} (${workflow.id}). Aborting");
+    if (step == null) {
+      throw sci.ServiceError(500, "step.not.found",
+          "Step $step not found in workflow ${workflow.name} (${workflow.id}). Aborting");
     }
-    
-    final cbTask = (await tercen.ServiceFactory().taskService.get(  step.model.taskId )) as sci.CubeQueryTask;
-    final schemas = await tercen.ServiceFactory().tableSchemaService.findByQueryHash([cbTask.query.qtHash, cbTask.query.columnHash, cbTask.query.rowHash]);
+
+    final cbTask = (await tercen.ServiceFactory()
+        .taskService
+        .get(step.model.taskId)) as sci.CubeQueryTask;
+    final schemas = await tercen.ServiceFactory()
+        .tableSchemaService
+        .findByQueryHash([
+      cbTask.query.qtHash,
+      cbTask.query.columnHash,
+      cbTask.query.rowHash
+    ]);
 
     currentMap["qt"] = schemas[0].nRows as double;
     currentMap["col"] = schemas[1].nRows as double;
@@ -225,23 +287,33 @@ class MemoryEstimator {
     return currentMap;
   }
 
-  Future<sci.Workflow> updateCubeQueryTask({required sci.Workflow workflow, required String stepId, bool removeColumns = false, bool removeRows = false}) async {
-    final step = workflow.steps.whereType<sci.DataStep>().where((step) => step.id == stepId).firstOrNull;
+  Future<sci.Workflow> updateCubeQueryTask(
+      {required sci.Workflow workflow,
+      required String stepId,
+      bool removeColumns = false,
+      bool removeRows = false}) async {
+    final step = workflow.steps
+        .whereType<sci.DataStep>()
+        .where((step) => step.id == stepId)
+        .firstOrNull;
 
-    if( step == null ){
-      throw sci.ServiceError(500, "step.not.found", "Step $step not found in workflow ${workflow.name} (${workflow.id}). Aborting");
+    if (step == null) {
+      throw sci.ServiceError(500, "step.not.found",
+          "Step $step not found in workflow ${workflow.name} (${workflow.id}). Aborting");
     }
-    final cbTask = (await tercen.ServiceFactory().taskService.get(  step.model.taskId )) as sci.CubeQueryTask;
+    final cbTask = (await tercen.ServiceFactory()
+        .taskService
+        .get(step.model.taskId)) as sci.CubeQueryTask;
 
     // var caq = sci.CubeAxisQuery();
     // caq.yAxis = sci.Factor.json({"name":"measurement", "type":"double"});
     // caq.xAxis = sci.Factor.json({"name":"measurement", "type":"double"});
     // var query = sci.CubeQuery();
-    // query.axisQueries.add(caq); 
+    // query.axisQueries.add(caq);
     // query.rowColumns.clear();
     // query.colColumns.clear();
     // query.relation = cbTask.query.relation;
-    
+
     cbTask.query.filters = step.model.filters;
     // print(step.model.toJson())    ;
     var task = sci.CubeQueryTask();
@@ -251,9 +323,11 @@ class MemoryEstimator {
     task.projectId = workflow.projectId;
     task.owner = workflow.acl.owner;
 
-    task = (await tercen.ServiceFactory().taskService.create(task) )as sci.CubeQueryTask;
+    task = (await tercen.ServiceFactory().taskService.create(task))
+        as sci.CubeQueryTask;
     await tercen.ServiceFactory().taskService.runTask(task.id);
-    await tercen.ServiceFactory().taskService.waitDone(task.id) as sci.CubeQueryTask;
+    await tercen.ServiceFactory().taskService.waitDone(task.id)
+        as sci.CubeQueryTask;
     step.model.taskId = task.id;
     // if( removeColumns ){
     //   step.model.columnTable = sci.CrosstabTable()..cellSize = 500..nRows=1;
@@ -261,34 +335,41 @@ class MemoryEstimator {
     // if( removeRows){
     //   step.model.rowTable = sci.CrosstabTable()..cellSize = 500..nRows=1;
     // }
-    
+
     // // step.model.columnTable = sci.CrosstabTable()..cellSize = 540..nRows=1;
-    
+
     // // step.model.axis.xyAxis.first.yAxis.graphicalFactor = sci.GraphicalFactor()..factor = sci.Factor.json({"name":"measurement", "type":"double"});
     // step.model.axis.xyAxis.first.xAxis.graphicalFactor = sci.GraphicalFactor()..factor = sci.Factor.json({"name":"measurement", "type":"double"});
     // step.model.axis.xyAxis.first.colors = sci.Colors();
-    workflow.rev = await tercen.ServiceFactory().workflowService.update(workflow);
+    workflow.rev =
+        await tercen.ServiceFactory().workflowService.update(workflow);
     return workflow;
   }
 
-  String getWorkflowState({required sci.Workflow workflow})  {
+  String getWorkflowState({required sci.Workflow workflow}) {
     """
     NOTE: Only recording errors/exceptions for Data Steps at the moments
     """;
-    for( var step in workflow.steps.whereType<sci.DataStep>() ){
+    for (var step in workflow.steps.whereType<sci.DataStep>()) {
       final taskState = step.state.taskState;
-      if( taskState is sci.FailedState ){
-        return taskState.error == "run.operator.exit.code.137" && taskState.reason.contains("increase memory resources") ?
-         "INSUFFICIENT MEMORY" :
-         "ERROR";
+      if (taskState is sci.FailedState) {
+        return taskState.error == "run.operator.exit.code.137" &&
+                taskState.reason.contains("increase memory resources")
+            ? "INSUFFICIENT MEMORY"
+            : "ERROR";
       }
     }
 
     return "SUCCESS";
   }
 
-  Future<sci.Relation> _createFakeCrabsData({required String projectId, required String filename, required String owner,
-      int nObs = 500, int nVariable =4, int nSp = 4}) async{
+  Future<sci.Relation> _createFakeCrabsData(
+      {required String projectId,
+      required String filename,
+      required String owner,
+      int nObs = 500,
+      int nVariable = 4,
+      int nSp = 4}) async {
     // sp	sex	index	observation	variable	measurement
     // (character)	(character)	(numeric)	(numeric)	(character)	(numeric)
 
@@ -303,37 +384,42 @@ class MemoryEstimator {
     var uniqueVariable = <String>[];
     var uniqueSex = <String>['M', 'F'];
 
-    for( var i = 0; i < nSp; i++){
-      uniqueSp.add( StringUtils.getRandomString(3) );
+    for (var i = 0; i < nSp; i++) {
+      uniqueSp.add(StringUtils.getRandomString(3));
     }
-    for( var i = 0; i < nVariable; i++){
-      uniqueVariable.add( StringUtils.getRandomString(3) );
+    for (var i = 0; i < nVariable; i++) {
+      uniqueVariable.add(StringUtils.getRandomString(3));
     }
 
     var fileText = "sp,sex,index,observation,variable,measurement\n";
-    var index =0;
-    for( var oi = 0; oi < nObs; oi++){
-      for( var si = 0; si < nSp; si++){
-        for( var vi = 0; vi < nVariable; vi++){
-          for( var gi = 0; gi < uniqueSex.length; gi++){
-            var meas = Random().nextDouble() * 25 * (gi == 0 ? 1-Random().nextDouble()/5 : 1.0); 
+    var index = 0;
+    for (var oi = 0; oi < nObs; oi++) {
+      for (var si = 0; si < nSp; si++) {
+        for (var vi = 0; vi < nVariable; vi++) {
+          for (var gi = 0; gi < uniqueSex.length; gi++) {
+            var meas = Random().nextDouble() *
+                25 *
+                (gi == 0 ? 1 - Random().nextDouble() / 5 : 1.0);
 
-            fileText = "$fileText'${uniqueSp[si]}','${uniqueSex[gi]}',${index}.0,${oi}.0,'${uniqueVariable[vi]}',$meas\n";
+            fileText =
+                "$fileText'${uniqueSp[si]}','${uniqueSex[gi]}',${index}.0,${oi}.0,'${uniqueVariable[vi]}',$meas\n";
             index = index + 1;
           }
         }
       }
     }
 
-    var schemaId = await FileDataService().uploadFileAsTable2(projectId: projectId, filename: filename, owner: owner, data: utf8.encode(fileText));
+    var schemaId = await FileDataService().uploadFileAsTable2(
+        projectId: projectId,
+        filename: filename,
+        owner: owner,
+        data: utf8.encode(fileText));
     var sch = await tercen.ServiceFactory().tableSchemaService.get(schemaId);
-    
-    final colNames = sch.columns.map((col) => col.name).toSet().toList();
-    
 
-    //TODO     
-    var refRel = sci.SimpleRelation()
-      ..id = schemaId;
+    final colNames = sch.columns.map((col) => col.name).toSet().toList();
+
+    //TODO
+    var refRel = sci.SimpleRelation()..id = schemaId;
 
     var renameRel = sci.RenameRelation.json({
       "id": "rename_${Uuid().v4()}",
@@ -343,7 +429,5 @@ class MemoryEstimator {
     });
 
     return renameRel;
-
-}
-
+  }
 }

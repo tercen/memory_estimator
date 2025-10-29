@@ -1,9 +1,25 @@
 {
+    "tableId":"acfb724b-3f3d-413c-a745-6b172f4f0bdd",
     "testCases":[
         {
-           "workflowId":"629137e152adbe62fad89e98ec008812",
-           "stepId":"ebda5081-aae4-45fc-b91b-f7b4b19d402a",
-           "downsample":0
+           "workflowId":"4483c7f2cea36b455782f66f0e009f15",
+           "stepId":"8c074df4-27ac-4b71-86b1-8cf5c3f99d58",
+           "downsample":0,
+           "nObs":500,
+           "nVariable":5,
+           "nSp":4,
+           "settings":[
+            {
+                "name":"flip",
+                "value":"true",
+                "type":"bool"
+            },
+            {
+                "name":"base.size",
+                "value":"13",
+                "type":"int"
+            }
+           ]
         }
     ]
 }
