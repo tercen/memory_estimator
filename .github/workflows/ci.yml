@@ -51,8 +51,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            WEBAPP_LIB_BRANCH=main
 
       # Generate artifact attestation
       - name: Generate artifact attestation
