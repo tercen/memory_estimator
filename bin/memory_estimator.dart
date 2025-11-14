@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'package:args/args.dart';
@@ -264,9 +263,9 @@ void main(List<String> arguments) async {
       if (dataParamRanges.containsKey('n_sp') || nSpSingle != null) allParamNames.add('n_sp');
       if (dataParamRanges.containsKey('n_variable') || nVariableSingle != null) allParamNames.add('n_variable');
 
-      // Add operator settings params (sorted)
+      // Add operator settings params (sorted), prefixed with "settings."
       final settingNames = <String>{...operatorSettingRanges.keys, ...operatorSettings.keys}.toList()..sort();
-      allParamNames.addAll(settingNames);
+      allParamNames.addAll(settingNames.map((name) => 'settings.$name'));
 
       // Print CSV header
       print('\n${'='*80}');
@@ -324,7 +323,9 @@ void main(List<String> arguments) async {
           } else if (name == 'n_variable') {
             rowValues.add(nVariable.toString());
           } else {
-            rowValues.add(comboSettings[name] ?? '');
+            // Remove "settings." prefix to look up in comboSettings
+            final settingKey = name.startsWith('settings.') ? name.substring('settings.'.length) : name;
+            rowValues.add(comboSettings[settingKey] ?? '');
           }
         }
 
@@ -490,6 +491,7 @@ class MemoryEstimatorScript {
     log("Cleaning up temporary resources...");
     
     try {
+      await Future.delayed(const Duration(seconds: 2));
       CacheObject().clearCache();
       //Disabled for now
       if (workflowId != null) {
@@ -528,7 +530,7 @@ class MemoryEstimatorScript {
     required String owner,
   }) async {
     log("Generating synthetic data...");
-    
+
     final uniqueSp = <String>[];
     final uniqueVariable = <String>[];
     final uniqueSex = ['M', 'F'];
@@ -540,7 +542,17 @@ class MemoryEstimatorScript {
       uniqueVariable.add(StringUtils.getRandomString(3));
     }
 
-    var fileText = "sp,sex,index,observation,variable,measurement\n";
+    // Create temporary file
+    final tempDir = Directory.systemTemp;
+    final filename = "tmp_synth_${StringUtils.getRandomString(8)}.csv";
+    final tempFile = File('${tempDir.path}/$filename');
+
+    logIndent("Writing data to temporary file: ${tempFile.path}");
+
+    // Write to file using IOSink for streaming
+    final sink = tempFile.openWrite();
+    sink.writeln("sp,sex,index,observation,variable,measurement");
+
     var index = 0;
     for (var oi = 0; oi < nObs; oi++) {
       for (var si = 0; si < nSp; si++) {
@@ -550,22 +562,29 @@ class MemoryEstimatorScript {
                 25 *
                 (gi == 0 ? 1 - Random().nextDouble() / 5 : 1.0);
 
-            fileText =
-                "$fileText'${uniqueSp[si]}','${uniqueSex[gi]}',${index}.0,${oi}.0,'${uniqueVariable[vi]}',$meas\n";
+            sink.writeln("'${uniqueSp[si]}','${uniqueSex[gi]}',${index}.0,${oi}.0,'${uniqueVariable[vi]}',$meas");
             index = index + 1;
           }
         }
       }
     }
 
-    final filename = "tmp_synth_${StringUtils.getRandomString(8)}.csv";
+    await sink.flush();
+    await sink.close();
+
     logIndent("Uploading as: $filename");
-    
+
+    // Read file and upload
+    final fileBytes = await tempFile.readAsBytes();
     var schemaId = await FileDataService().uploadFileAsTable2(
         projectId: projectId,
         filename: filename,
         owner: owner,
-        data: utf8.encode(fileText));
+        data: fileBytes);
+
+    // Clean up temporary file
+    await tempFile.delete();
+
     var sch = await tercen.ServiceFactory().tableSchemaService.get(schemaId);
 
     final colNames = sch.columns.map((col) => col.name).toSet().toList();
