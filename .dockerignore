@@ -1,0 +1,32 @@
+# Git files
+.git
+.gitignore
+.github
+
+# IDE and editor files
+.idea
+.vscode
+*.swp
+*.swo
+*~
+
+# Build artifacts
+build/
+.dart_tool/
+*.lock
+
+# Test files
+test/
+
+# Documentation
+*.md
+README*
+
+# Temporary files
+*.tmp
+*.log
+results.csv
+
+# System files
+.DS_Store
+Thumbs.db
