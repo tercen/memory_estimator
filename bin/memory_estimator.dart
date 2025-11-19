@@ -192,6 +192,10 @@ void main(List<String> arguments) async {
     final thresholdMb = double.parse(results['threshold'] as String);
     final outputFile = results['output'] as String?;
 
+    // Initialize Tercen session first
+    AppSession appSession = AppSession();
+    await appSession.initSession(token: tercenToken, serviceUrl: serviceUri);
+
     // SETUP Test Project - declare outside try block for cleanup access
     Map<String, String>? projectMap;
     String? projectId;
@@ -498,12 +502,9 @@ class MemoryEstimatorScript {
 
   Future<double> run() async {
     log("Initializing memory estimator");
-    log("Service URL: $serviceUri");
 
-    // Initialize Tercen session
-    AppSession appSession = AppSession();
-    await appSession.initSession(token: tercenToken, serviceUrl: serviceUri);
-    final sess = appSession.session;
+    // Use existing AppSession (already initialized in main)
+    final sess = AppSession().session;
 
     log("Connected to Tercen ${sess.serverVersion.major}.${sess.serverVersion.minor}.${sess.serverVersion.patch}");
     log("User: ${sess.user.id}");
