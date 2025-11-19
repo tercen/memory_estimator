@@ -25,7 +25,8 @@ dart pub get
 dart run bin/memory_estimator_v2.dart \
   --repo-url <GITHUB_REPO_URL> \
   --team-name <TEAM_NAME> \
-  --tercen-token <TOKEN>
+  --username <USERNAME> \
+  --password <PASSWORD>
 ```
 
 This will run a single memory estimation with default parameters (500 observations, 4 species, 4 variables).
@@ -35,10 +36,11 @@ This will run a single memory estimation with default parameters (500 observatio
 **Required:**
 - `-r, --repo-url`: GitHub repository URL of the operator to test (e.g., `https://github.com/tercen/mean_operator`)
 - `--team-name`: Team name for project and workflow ownership
+- `--username`: Tercen username for authentication
+- `--password`: Tercen password for authentication
 
 **Optional:**
 - `-u, --tercen-url`: Tercen service URL (default: http://127.0.0.1:5400)
-- `-t, --tercen-token`: Tercen authentication token (required for authentication)
 - `--n-obs`: Number of observations - single value (default: 500) or range (e.g., `100:5:1000` for 5 values from 100 to 1000)
 - `--n-sp`: Number of species - single value (default: 4) or range
 - `--n-variable`: Number of variables - single value (default: 4) or range
@@ -69,7 +71,8 @@ When multiple range parameters are specified, the tool performs a **grid search*
 dart run bin/memory_estimator_v2.dart \
   --repo-url https://github.com/tercen/mean_operator \
   --team-name my_team \
-  --tercen-token <TOKEN>
+  --username myuser \
+  --password mypass
 ```
 
 ### Single Run with Custom Parameters
@@ -78,7 +81,8 @@ dart run bin/memory_estimator_v2.dart \
 dart run bin/memory_estimator_v2.dart \
   --repo-url https://github.com/tercen/pca_operator \
   --team-name my_team \
-  --tercen-token <TOKEN> \
+  --username myuser \
+  --password mypass \
   --n-obs 1000 \
   --n-sp 8 \
   --n-variable 6 \
@@ -93,7 +97,8 @@ Test combinations of data sizes and operator settings:
 dart run bin/memory_estimator_v2.dart \
   --repo-url https://github.com/tercen/knn_operator \
   --team-name my_team \
-  --tercen-token <TOKEN> \
+  --username myuser \
+  --password mypass \
   --n-obs 100:5:1000 \
   --setting.k_neighbors 5:3:15 \
   --output results.csv
@@ -107,7 +112,8 @@ This will test 15 combinations (5 n-obs values × 3 k_neighbors values) and save
 dart run bin/memory_estimator_v2.dart \
   --repo-url https://github.com/tercen/clustering_operator \
   --team-name my_team \
-  --tercen-token <TOKEN> \
+  --username myuser \
+  --password mypass \
   --n-obs 100:3:500 \
   --n-sp 2:3:8 \
   --setting.n_clusters 3:3:9 \
@@ -239,7 +245,7 @@ Examples:
 ## Troubleshooting
 
 ### Authentication errors
-Ensure your `--tercen-token` is valid and the team has appropriate permissions.
+Ensure your `--username` and `--password` are correct and the user/team has appropriate permissions.
 
 ### "Repository not found" error
 Verify the `--repo-url` is a valid GitHub repository URL accessible to your Tercen instance.
