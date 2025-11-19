@@ -85,12 +85,13 @@ void main(List<String> arguments) async {
         abbr: 'u',
         defaultsTo: 'http://127.0.0.1:5400',
         help: 'Tercen service URL')
-    ..addOption('tercen-token',
-        abbr: 't',
-        help: 'Tercen authentication token (required for authentication)')
+    ..addOption('username',
+        help: 'Tercen username (required for authentication)')
+    ..addOption('password',
+        help: 'Tercen password (required for authentication)')
     ..addOption('repo-url',
         abbr: 'r', mandatory: true, help: 'Github repo of the tested operator')
-    ..addOption('team-name', mandatory: true, help: 'Team name for workflow copy (optional)')
+    ..addOption('team-name', mandatory: true, help: 'Team name for workflow copy')
     ..addOption('n-obs',
         defaultsTo: '500',
         help: 'Number of observations (default: 500, or min:n:max for range)')
@@ -181,8 +182,8 @@ void main(List<String> arguments) async {
     }
 
     final serviceUri = results['tercen-url'] as String;
-    final tercenToken = results['tercen-token'] as String?;
-    // final projectId = results['project-id'] as String;
+    final username = results['username'] as String?;
+    final password = results['password'] as String?;
 
     final repoUrl = results['repo-url'] as String;
 
@@ -194,7 +195,7 @@ void main(List<String> arguments) async {
 
     // Initialize Tercen session first
     AppSession appSession = AppSession();
-    await appSession.initSession(token: tercenToken, serviceUrl: serviceUri);
+    await appSession.initSession(user: username, passw: password, serviceUrl: serviceUri);
 
     // SETUP Test Project - declare outside try block for cleanup access
     Map<String, String>? projectMap;
@@ -316,8 +317,6 @@ void main(List<String> arguments) async {
           }
 
           final estimator = MemoryEstimatorScript(
-            serviceUri: serviceUri,
-            tercenToken: tercenToken,
             projectId: projectId!,
             workflowId: workflowId!,
             stepId: stepId!,
@@ -401,8 +400,6 @@ void main(List<String> arguments) async {
         }
 
         final estimator = MemoryEstimatorScript(
-          serviceUri: serviceUri,
-          tercenToken: tercenToken,
           projectId: projectId!,
           workflowId: workflowId!,
           stepId: stepId!,
@@ -460,8 +457,6 @@ Future<void> cleanup({required Map<String,String> idMap}) async{
 }
 
 class MemoryEstimatorScript {
-  final String serviceUri;
-  final String? tercenToken;
   final String projectId;
   final String workflowId;
   final String stepId;
@@ -476,8 +471,6 @@ class MemoryEstimatorScript {
   final Map<String, String> operatorSettings;
 
   MemoryEstimatorScript({
-    required this.serviceUri,
-    this.tercenToken,
     required this.projectId,
     required this.workflowId,
     required this.stepId,
