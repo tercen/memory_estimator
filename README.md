@@ -5,11 +5,11 @@ A command-line tool for estimating memory requirements for Tercen workflows thro
 ## Overview
 
 The Memory Estimator performs automated RAM requirement analysis by:
-1. Copying a workflow to a test project
+1. Creating a test project from a GitHub repository
 2. Generating and injecting synthetic data with configurable parameters
 3. Using hybrid exponential + binary search to find minimum required RAM
 4. Optionally running grid searches across multiple parameter combinations
-5. Automatically cleaning up all temporary resources
+5. Automatically cleaning up all temporary resources (project, workflows, data)
 
 ## Quick Start
 
@@ -22,11 +22,9 @@ dart pub get
 ### Basic usage
 
 ```bash
-dart run bin/memory_estimator.dart \
-  --project-id <PROJECT_ID> \
-  --workflow-id <WORKFLOW_ID> \
-  --step-id <STEP_ID> \
-  --table-step-id <TABLE_STEP_ID> \
+dart run bin/memory_estimator_v2.dart \
+  --repo-url <GITHUB_REPO_URL> \
+  --team-name <TEAM_NAME> \
   --tercen-token <TOKEN>
 ```
 
@@ -35,16 +33,13 @@ This will run a single memory estimation with default parameters (500 observatio
 ## Command-Line Options
 
 **Required:**
-- `-p, --project-id`: Project ID where workflow copy will be created
-- `-w, --workflow-id`: Workflow ID to test
-- `-s, --step-id`: Step ID to estimate RAM for
-- `--table-step-id`: Table step ID to inject synthetic data into
+- `-r, --repo-url`: GitHub repository URL of the operator to test (e.g., `https://github.com/tercen/mean_operator`)
+- `--team-name`: Team name for project and workflow ownership
 
 **Optional:**
 - `-u, --tercen-url`: Tercen service URL (default: http://127.0.0.1:5400)
-- `-t, --tercen-token`: Tercen authentication token
-- `--team-name`: Team name for workflow copy
-- `--n-obs`: Number of observations - single value (e.g., `500`) or range (e.g., `100:5:1000` for 5 values from 100 to 1000)
+- `-t, --tercen-token`: Tercen authentication token (required for authentication)
+- `--n-obs`: Number of observations - single value (default: 500) or range (e.g., `100:5:1000` for 5 values from 100 to 1000)
 - `--n-sp`: Number of species - single value (default: 4) or range
 - `--n-variable`: Number of variables - single value (default: 4) or range
 - `--min-ram`: Minimum RAM to test in MB (default: 500)
@@ -71,27 +66,23 @@ When multiple range parameters are specified, the tool performs a **grid search*
 ### Single Run with Defaults
 
 ```bash
-dart run bin/memory_estimator.dart \
-  --project-id abc123 \
-  --workflow-id def456 \
-  --step-id ghi789 \
-  --table-step-id jkl012 \
+dart run bin/memory_estimator_v2.dart \
+  --repo-url https://github.com/tercen/mean_operator \
+  --team-name my_team \
   --tercen-token <TOKEN>
 ```
 
 ### Single Run with Custom Parameters
 
 ```bash
-dart run bin/memory_estimator.dart \
-  --project-id abc123 \
-  --workflow-id def456 \
-  --step-id ghi789 \
-  --table-step-id jkl012 \
+dart run bin/memory_estimator_v2.dart \
+  --repo-url https://github.com/tercen/pca_operator \
+  --team-name my_team \
   --tercen-token <TOKEN> \
   --n-obs 1000 \
   --n-sp 8 \
   --n-variable 6 \
-  --setting.k_neighbors 10
+  --setting.n_components 5
 ```
 
 ### Grid Search Across Multiple Parameters
@@ -99,11 +90,9 @@ dart run bin/memory_estimator.dart \
 Test combinations of data sizes and operator settings:
 
 ```bash
-dart run bin/memory_estimator.dart \
-  --project-id abc123 \
-  --workflow-id def456 \
-  --step-id ghi789 \
-  --table-step-id jkl012 \
+dart run bin/memory_estimator_v2.dart \
+  --repo-url https://github.com/tercen/knn_operator \
+  --team-name my_team \
   --tercen-token <TOKEN> \
   --n-obs 100:5:1000 \
   --setting.k_neighbors 5:3:15 \
@@ -115,16 +104,14 @@ This will test 15 combinations (5 n-obs values × 3 k_neighbors values) and save
 ### Grid Search with Multiple Operator Settings
 
 ```bash
-dart run bin/memory_estimator.dart \
-  --project-id abc123 \
-  --workflow-id def456 \
-  --step-id ghi789 \
-  --table-step-id jkl012 \
+dart run bin/memory_estimator_v2.dart \
+  --repo-url https://github.com/tercen/clustering_operator \
+  --team-name my_team \
   --tercen-token <TOKEN> \
   --n-obs 100:3:500 \
   --n-sp 2:3:8 \
-  --setting.k_neighbors 5:3:15 \
-  --setting.metric euclidean \
+  --setting.n_clusters 3:3:9 \
+  --setting.method kmeans \
   --output memory_profile.csv
 ```
 
@@ -152,16 +139,19 @@ When range parameters are specified (using `min:n:max` syntax), the tool:
 ### Automatic Cleanup
 
 After each run, the tool automatically deletes:
-- Copied workflow
+- Test project (including all workflows and data)
 - Synthetic data tables
 - Temporary files created during execution
+
+The cleanup happens in a `finally` block, ensuring resources are removed even if the estimation fails.
 
 ## Project Structure
 
 ```
 memory_estimator/
 ├── bin/
-│   └── memory_estimator.dart      # Main CLI tool
+│   ├── memory_estimator_v2.dart   # Main CLI tool (new version)
+│   └── memory_estimator.dart.bkp  # Legacy version
 ├── lib/
 │   └── cube_query_builder.dart    # Tercen workflow utilities
 ├── example.sh                      # Example script (basic)
@@ -175,13 +165,13 @@ memory_estimator/
 ### Build standalone executable
 
 ```bash
-dart compile exe bin/memory_estimator.dart -o memory_estimator
+dart compile exe bin/memory_estimator_v2.dart -o memory_estimator
 ```
 
 ### Run executable
 
 ```bash
-./memory_estimator --project-id <ID> --workflow-id <ID> --step-id <ID> --table-step-id <ID>
+./memory_estimator --repo-url <REPO_URL> --team-name <TEAM>
 ```
 
 ## Output Format
@@ -191,9 +181,10 @@ dart compile exe bin/memory_estimator.dart -o memory_estimator
 ```
 [2025-01-15T10:30:00.000Z] Initializing memory estimator
 [2025-01-15T10:30:00.100Z] Connected to Tercen 1.0.0
-[2025-01-15T10:30:00.200Z] Starting RAM estimation for:
-  Workflow ID: def456
-  Step ID: ghi789
+[2025-01-15T10:30:00.200Z] User: my_team
+[2025-01-15T10:30:00.300Z] Starting RAM estimation for:
+  Workflow ID: <auto-generated>
+  Step ID: <auto-detected>
   Synthetic data: nObs=500, nSp=4, nVariable=4
 [2025-01-15T10:30:05.000Z] Phase 1: Exponential search to find upper bound...
   Testing with 500.00 MB...
@@ -208,6 +199,10 @@ dart compile exe bin/memory_estimator.dart -o memory_estimator
 [2025-01-15T10:30:25.000Z] ═══════════════════════════════════════
 [2025-01-15T10:30:25.000Z] RESULT: Estimated RAM needed: 625.00 MB
 [2025-01-15T10:30:25.000Z] ═══════════════════════════════════════
+[2025-01-15T10:30:26.000Z] Cleaning up temporary resources...
+  Deleting copied workflow: <workflow-id>
+  Deleting synthetic data: <data-id>
+  Cleanup complete
 ```
 
 ### Grid Search Output (CSV)
@@ -215,7 +210,7 @@ dart compile exe bin/memory_estimator.dart -o memory_estimator
 When using `--output results.csv` with ranges:
 
 ```csv
-n_obs,n_sp,n_variable,k_neighbors,estimated_ram_mb
+n_obs,n_sp,n_variable,settings.k_neighbors,estimated_ram_mb
 100,4,4,5,512.50
 100,4,4,10,625.00
 100,4,4,15,750.00
@@ -226,6 +221,8 @@ n_obs,n_sp,n_variable,k_neighbors,estimated_ram_mb
 500,4,4,10,2000.00
 500,4,4,15,2250.00
 ```
+
+Note: Operator settings are prefixed with `settings.` in the CSV output.
 
 ## Range Syntax
 
@@ -242,16 +239,16 @@ Examples:
 ## Troubleshooting
 
 ### Authentication errors
-Ensure your `--tercen-token` is valid and has access to the project.
+Ensure your `--tercen-token` is valid and the team has appropriate permissions.
+
+### "Repository not found" error
+Verify the `--repo-url` is a valid GitHub repository URL accessible to your Tercen instance.
 
 ### "Step not found" error
-Verify the `--step-id` exists in the specified workflow.
-
-### "Table step not found" error
-Verify the `--table-step-id` exists and is a table step in the workflow.
+The tool automatically detects the DataStep and TableStep from the template workflow. If this fails, ensure the template workflow has at least one DataStep and one TableStep.
 
 ### Memory estimation reaches max limit
-If estimation hits `--max-ram` limit, try increasing the max-ram parameter or optimizing your workflow/data.
+If estimation hits `--max-ram` limit, try increasing the max-ram parameter or optimizing your operator.
 
 ## License
 

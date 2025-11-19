@@ -10,11 +10,11 @@ environment:
 dependencies:
   args: ^2.4.2
   webapp_core:
-    #path: ../webapp_lib/webapp_core
-    git:
-      url: https://github.com/tercen/webapp_lib.git
-      ref: main
-      path: webapp_core
+    path: ../webapp_lib/webapp_core
+#    git:
+#      url: https://github.com/tercen/webapp_lib.git
+#      ref: main
+#      path: webapp_core
 
 dev_dependencies:
   lints: ^4.0.0
