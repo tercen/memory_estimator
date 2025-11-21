@@ -210,9 +210,10 @@ void main(List<String> arguments) async {
     //Set up library team
     print("Setting library 'test_library' with project $repoUrl@${repoVersion ?? "main"}");
     await UserDataService().createTeam(teamName: "test_library", owner: username, isLibrary: true);
+    print("\tCreated library team");
     await LibraryDataService.installOperator(url: repoUrl, team: "test_library", branch: repoBranch,
         tag: repoVersion);
-
+    print("\tInstalled test project");
     // SETUP Test Project - declare outside try block for cleanup access
     Map<String, String>? projectMap;
     String? projectId;
