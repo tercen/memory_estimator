@@ -80,6 +80,7 @@ List<Map<String, dynamic>> _generateCombinedGrid({
 
 void main(List<String> arguments) async {
   // Parse command-line arguments
+  // Updated lib
   final parser = ArgParser()
     ..addOption('tercen-url',
         abbr: 'u',
