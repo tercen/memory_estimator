@@ -89,17 +89,22 @@ void main(List<String> arguments) async {
         defaultsTo: 'http://127.0.0.1:5400',
         help: 'Tercen service URL')
     ..addOption('username',
-        mandatory: true,
-        help: 'Tercen username (required for authentication)')
+        mandatory: true, help: 'Tercen username (required for authentication)')
     ..addOption('password',
         help: 'Tercen password (required for authentication)')
     ..addOption('repo-url',
         abbr: 'r', mandatory: true, help: 'Github repo of the tested operator')
     ..addOption('repo-version',
-        abbr: 't', mandatory: false, help: 'Github repo version of the tested operator')
+        abbr: 't',
+        mandatory: false,
+        help: 'Github repo version of the tested operator')
     ..addOption('repo-branch',
-        abbr: 'b', mandatory: false, help: 'Github repo version of the tested operator', defaultsTo: "main")
-    ..addOption('team-name', mandatory: true, help: 'Team name for workflow copy')
+        abbr: 'b',
+        mandatory: false,
+        help: 'Github repo version of the tested operator',
+        defaultsTo: "main")
+    ..addOption('team-name',
+        mandatory: true, help: 'Team name for workflow copy')
     ..addOption('n-obs',
         defaultsTo: '500',
         help: 'Number of observations (default: 500, or min:n:max for range)')
@@ -205,13 +210,19 @@ void main(List<String> arguments) async {
 
     // Initialize Tercen session first
     AppSession appSession = AppSession();
-    await appSession.initSession(user: username, passw: password, serviceUrl: serviceUri);
+    await appSession.initSession(
+        user: username, passw: password, serviceUrl: serviceUri);
 
     //Set up library team
-    print("Setting library 'test_library' with project $repoUrl@${repoVersion ?? "main"}");
-    await UserDataService().createTeam(teamName: "test_library", owner: username, isLibrary: true);
+    print(
+        "Setting library 'test_library' with project $repoUrl@${repoVersion ?? "main"} for user $username");
+    await UserDataService()
+        .createTeam(teamName: "test_library", owner: username, isLibrary: true);
     print("\tCreated library team");
-    await LibraryDataService.installOperator(url: repoUrl, team: "test_library", branch: repoBranch,
+    await LibraryDataService.installOperator(
+        url: repoUrl,
+        team: "test_library",
+        branch: repoBranch,
         tag: repoVersion);
     print("\tInstalled test project");
     // SETUP Test Project - declare outside try block for cleanup access
@@ -222,7 +233,7 @@ void main(List<String> arguments) async {
     String? workflowId;
 
     try {
-      projectMap = await setup(user: teamName, repoUrl:repoUrl);
+      projectMap = await setup(user: teamName, repoUrl: repoUrl);
       projectId = projectMap["projectId"];
       stepId = projectMap["stepId"];
       tableStepId = projectMap["tableStepId"];
@@ -295,8 +306,8 @@ void main(List<String> arguments) async {
           allParamNames.add('n_obs');
         if (dataParamRanges.containsKey('n_sp') || nSpSingle != null)
           allParamNames.add('n_sp');
-        if (dataParamRanges.containsKey('n_variable') || nVariableSingle != null)
-          allParamNames.add('n_variable');
+        if (dataParamRanges.containsKey('n_variable') ||
+            nVariableSingle != null) allParamNames.add('n_variable');
 
         // Add operator settings params (sorted), prefixed with "settings."
         final settingNames = <String>{
@@ -390,7 +401,8 @@ void main(List<String> arguments) async {
         for (var result in results) {
           final values =
               allParamNames.map((name) => result[name].toString()).join(',');
-          final row = '$values,${result['estimated_ram_mb'].toStringAsFixed(2)}';
+          final row =
+              '$values,${result['estimated_ram_mb'].toStringAsFixed(2)}';
           print(row);
           csvRows.add(row);
         }
@@ -460,16 +472,23 @@ Future<Map<String, String>> setup({
   final project = await ProjectDataService().createProject(
       name: "MemoryTest_${StringUtils.getRandomString(4)}", owner: user);
 
-  final workflow = await WorkflowConfigUtils.copyTemplateFromLibrary(templateUrl: repoUrl, projectId: project.id, user: user);
+  final workflow = await WorkflowConfigUtils.copyTemplateFromLibrary(
+      templateUrl: repoUrl,
+      projectId: project.id,
+      user: user,
+      workflowName: "memory_workflow");
 
-  return {'projectId':project.id,
-    'workflowId':workflow.id,
-    'stepId':workflow.steps.whereType<sci.DataStep>().first.id,
-    'tableStepId':workflow.steps.whereType<sci.TableStep>().first.id};
+  return {
+    'projectId': project.id,
+    'workflowId': workflow.id,
+    'stepId': workflow.steps.whereType<sci.DataStep>().first.id,
+    'tableStepId': workflow.steps.whereType<sci.TableStep>().first.id
+  };
 }
 
-Future<void> cleanup({required Map<String,String> idMap}) async{
-  final project = await tercen.ServiceFactory().projectService.get(idMap["projectId"]!);
+Future<void> cleanup({required Map<String, String> idMap}) async {
+  final project =
+      await tercen.ServiceFactory().projectService.get(idMap["projectId"]!);
   await tercen.ServiceFactory().projectService.delete(project.id, project.rev);
 }
 
@@ -546,9 +565,6 @@ class MemoryEstimatorScript {
       );
     }
   }
-
-
-
 
   Future<void> cleanup({String? workflowId, String? dataSchemaId}) async {
     log("Cleaning up temporary resources...");
