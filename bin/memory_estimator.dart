@@ -11,7 +11,9 @@ import 'package:webapp_core/runner/workflow_runner.dart';
 import 'package:webapp_core/runner/utils/workflow/workflow_settings_utils.dart';
 import 'package:webapp_core/runner/utils/workflow/workflow_input_utils.dart';
 import 'package:webapp_core/service/file_data_service.dart';
+import 'package:webapp_core/service/library_data_service.dart';
 import 'package:webapp_core/service/project_data_service.dart';
+import 'package:webapp_core/service/user_data_service.dart';
 import 'package:webapp_core/utils/string_utils.dart';
 import 'package:webapp_core/runner/utils/cache_object.dart';
 import 'package:memory_estimator/cube_query_builder.dart';
@@ -87,11 +89,14 @@ void main(List<String> arguments) async {
         defaultsTo: 'http://127.0.0.1:5400',
         help: 'Tercen service URL')
     ..addOption('username',
+        mandatory: true,
         help: 'Tercen username (required for authentication)')
     ..addOption('password',
         help: 'Tercen password (required for authentication)')
     ..addOption('repo-url',
         abbr: 'r', mandatory: true, help: 'Github repo of the tested operator')
+    ..addOption('repo-version',
+        abbr: 't', mandatory: false, help: 'Github repo version of the tested operator')
     ..addOption('team-name', mandatory: true, help: 'Team name for workflow copy')
     ..addOption('n-obs',
         defaultsTo: '500',
@@ -183,10 +188,11 @@ void main(List<String> arguments) async {
     }
 
     final serviceUri = results['tercen-url'] as String;
-    final username = results['username'] as String?;
+    final username = results['username'] as String;
     final password = results['password'] as String?;
 
     final repoUrl = results['repo-url'] as String;
+    final repoVersion = results['repo-version'] as String?;
 
     final teamName = results['team-name'] as String;
     final minRamMb = double.parse(results['min-ram'] as String);
@@ -197,6 +203,11 @@ void main(List<String> arguments) async {
     // Initialize Tercen session first
     AppSession appSession = AppSession();
     await appSession.initSession(user: username, passw: password, serviceUrl: serviceUri);
+
+    print("Setting library 'test_library' with project $repoUrl@${repoVersion ?? "main"}");
+    await UserDataService().createTeam(teamName: "test_library", owner: username, isLibrary: true);
+    await LibraryDataService.installOperator(url: repoUrl, team: "test_library",
+        tag: repoVersion);
 
     // SETUP Test Project - declare outside try block for cleanup access
     Map<String, String>? projectMap;
