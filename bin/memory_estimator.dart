@@ -97,6 +97,8 @@ void main(List<String> arguments) async {
         abbr: 'r', mandatory: true, help: 'Github repo of the tested operator')
     ..addOption('repo-version',
         abbr: 't', mandatory: false, help: 'Github repo version of the tested operator')
+    ..addOption('repo-branch',
+        abbr: 'b', mandatory: false, help: 'Github repo version of the tested operator', defaultsTo: "main")
     ..addOption('team-name', mandatory: true, help: 'Team name for workflow copy')
     ..addOption('n-obs',
         defaultsTo: '500',
@@ -193,6 +195,7 @@ void main(List<String> arguments) async {
 
     final repoUrl = results['repo-url'] as String;
     final repoVersion = results['repo-version'] as String?;
+    final repoBranch = results['repo-branch'] as String;
 
     final teamName = results['team-name'] as String;
     final minRamMb = double.parse(results['min-ram'] as String);
@@ -207,7 +210,7 @@ void main(List<String> arguments) async {
     //Set up library team
     print("Setting library 'test_library' with project $repoUrl@${repoVersion ?? "main"}");
     await UserDataService().createTeam(teamName: "test_library", owner: username, isLibrary: true);
-    await LibraryDataService.installOperator(url: repoUrl, team: "test_library",
+    await LibraryDataService.installOperator(url: repoUrl, team: "test_library", branch: repoBranch,
         tag: repoVersion);
 
     // SETUP Test Project - declare outside try block for cleanup access
