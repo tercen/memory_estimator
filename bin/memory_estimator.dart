@@ -332,9 +332,9 @@ void main(List<String> arguments) async {
           print('\n--- Combination ${i + 1}/${combinations.length} ---');
 
           // Extract data params
-          final nObs = combo['n_obs'] as int? ?? nObsSingle!;
-          final nSp = combo['n_sp'] as int? ?? nSpSingle!;
-          final nVariable = combo['n_variable'] as int? ?? nVariableSingle!;
+          final nObs = combo['n_obs'] as int? ?? nObsSingle ?? 500;
+          final nSp = combo['n_sp'] as int? ?? nSpSingle ?? 4;
+          final nVariable = combo['n_variable'] as int? ?? nVariableSingle ?? 4;
 
           // Extract operator settings
           final comboSettings = <String, String>{};
