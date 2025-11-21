@@ -204,6 +204,7 @@ void main(List<String> arguments) async {
     AppSession appSession = AppSession();
     await appSession.initSession(user: username, passw: password, serviceUrl: serviceUri);
 
+    //Set up library team
     print("Setting library 'test_library' with project $repoUrl@${repoVersion ?? "main"}");
     await UserDataService().createTeam(teamName: "test_library", owner: username, isLibrary: true);
     await LibraryDataService.installOperator(url: repoUrl, team: "test_library",
