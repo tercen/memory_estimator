@@ -215,13 +215,13 @@ void main(List<String> arguments) async {
 
     //Set up library team
     print(
-        "Setting library 'test_library' with project $repoUrl@${repoVersion ?? "main"} for user $username");
+        "Setting library 'memory_test_library' with project $repoUrl@${repoVersion ?? "main"} for user $username");
     await UserDataService()
-        .createTeam(teamName: "test_library", owner: username, isLibrary: true);
+        .createTeam(teamName: "memory_test_library", owner: username, isLibrary: true);
     print("\tCreated library team");
     await LibraryDataService.installOperator(
         url: repoUrl,
-        team: "test_library",
+        team: "memory_test_library",
         branch: repoBranch,
         tag: repoVersion);
     print("\tInstalled test project");
