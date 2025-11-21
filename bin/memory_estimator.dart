@@ -215,9 +215,9 @@ void main(List<String> arguments) async {
 
     //Set up library team
     print(
-        "Setting library 'memory_test_library' with project $repoUrl@${repoVersion ?? "main"} for user $username");
+        "Setting library 'memory_test_library' with project $repoUrl@${repoVersion ?? "main"} for user $teamName");
     await UserDataService()
-        .createTeam(teamName: "memory_test_library", owner: username, isLibrary: true);
+        .createTeam(teamName: "memory_test_library", owner: teamName, isLibrary: true);
     print("\tCreated library team");
     await LibraryDataService.installOperator(
         url: repoUrl,
