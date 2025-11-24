@@ -18,6 +18,8 @@ import 'package:webapp_core/utils/string_utils.dart';
 import 'package:webapp_core/runner/utils/cache_object.dart';
 import 'package:memory_estimator/cube_query_builder.dart';
 
+
+
 /// Generate combined grid for data parameters and operator settings
 List<Map<String, dynamic>> _generateCombinedGrid({
   required Map<String, List<int>> dataRanges,
@@ -225,6 +227,8 @@ void main(List<String> arguments) async {
         branch: repoBranch,
         tag: repoVersion);
     print("\tInstalled test project");
+
+
     // SETUP Test Project - declare outside try block for cleanup access
     Map<String, String>? projectMap;
     String? projectId;
@@ -472,16 +476,28 @@ Future<Map<String, String>> setup({
   final project = await ProjectDataService().createProject(
       name: "MemoryTest_${StringUtils.getRandomString(4)}", owner: user);
 
-  final workflow = await WorkflowConfigUtils.copyTemplateFromLibrary(
+  var workflow = await WorkflowConfigUtils.copyTemplateFromLibrary(
       templateUrl: repoUrl,
       projectId: project.id,
       user: user,
       workflowName: "memory_workflow");
 
+  final stepId = workflow.steps.whereType<sci.DataStep>().first.id;
+
+  // Set the operator on the workflow step
+  workflow = await WorkflowSettingsUtils.setOperator(
+      workflow: workflow,
+      operatorUrl: repoUrl,
+      operatorVersion: "latest",
+      stepId: stepId);
+
+
+  workflow.rev = await tercen.ServiceFactory().workflowService.update(workflow);
+
   return {
     'projectId': project.id,
     'workflowId': workflow.id,
-    'stepId': workflow.steps.whereType<sci.DataStep>().first.id,
+    'stepId': stepId,
     'tableStepId': workflow.steps.whereType<sci.TableStep>().first.id
   };
 }
