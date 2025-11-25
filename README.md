@@ -11,6 +11,14 @@ The Memory Estimator performs automated RAM requirement analysis by:
 4. Optionally running grid searches across multiple parameter combinations
 5. Automatically cleaning up all temporary resources (project, workflows, data)
 
+### IMPORTANT NOTE ABOUT WORKFLOW AND PROJECTION
+
+This script will run a workflow names <code>memory_workflow</code> in the operator project.
+
+<code>memory_workflow</code> is a template and must contain a TableStep and a DataStep.
+
+**The input data and projection MUST be based on the Crabs dataset**
+
 ## Quick Start
 
 ### Install dependencies
@@ -22,7 +30,7 @@ dart pub get
 ### Basic usage
 
 ```bash
-dart run bin/memory_estimator_v2.dart \
+dart run bin/memory_estimator.dart \
   --repo-url <GITHUB_REPO_URL> \
   --team-name <TEAM_NAME> \
   --username <USERNAME> \
@@ -68,7 +76,7 @@ When multiple range parameters are specified, the tool performs a **grid search*
 ### Single Run with Defaults
 
 ```bash
-dart run bin/memory_estimator_v2.dart \
+dart run bin/memory_estimator.dart \
   --repo-url https://github.com/tercen/mean_operator \
   --team-name my_team \
   --username myuser \
@@ -78,7 +86,7 @@ dart run bin/memory_estimator_v2.dart \
 ### Single Run with Custom Parameters
 
 ```bash
-dart run bin/memory_estimator_v2.dart \
+dart run bin/memory_estimator.dart \
   --repo-url https://github.com/tercen/pca_operator \
   --team-name my_team \
   --username myuser \
@@ -94,7 +102,7 @@ dart run bin/memory_estimator_v2.dart \
 Test combinations of data sizes and operator settings:
 
 ```bash
-dart run bin/memory_estimator_v2.dart \
+dart run bin/memory_estimator.dart \
   --repo-url https://github.com/tercen/knn_operator \
   --team-name my_team \
   --username myuser \
@@ -109,7 +117,7 @@ This will test 15 combinations (5 n-obs values × 3 k_neighbors values) and save
 ### Grid Search with Multiple Operator Settings
 
 ```bash
-dart run bin/memory_estimator_v2.dart \
+dart run bin/memory_estimator.dart \
   --repo-url https://github.com/tercen/clustering_operator \
   --team-name my_team \
   --username myuser \
@@ -151,35 +159,6 @@ After each run, the tool automatically deletes:
 
 The cleanup happens in a `finally` block, ensuring resources are removed even if the estimation fails.
 
-## Project Structure
-
-```
-memory_estimator/
-├── bin/
-│   ├── memory_estimator_v2.dart   # Main CLI tool (new version)
-│   └── memory_estimator.dart.bkp  # Legacy version
-├── lib/
-│   └── cube_query_builder.dart    # Tercen workflow utilities
-├── example.sh                      # Example script (basic)
-├── example_run.sh                  # Example script (detailed)
-├── pubspec.yaml                    # Dart dependencies
-└── README.md                       # This file
-```
-
-## Development
-
-### Build standalone executable
-
-```bash
-dart compile exe bin/memory_estimator_v2.dart -o memory_estimator
-```
-
-### Run executable
-
-```bash
-./memory_estimator --repo-url <REPO_URL> --team-name <TEAM>
-```
-
 ## Output Format
 
 ### Single Run Output
@@ -204,6 +183,7 @@ dart compile exe bin/memory_estimator_v2.dart -o memory_estimator
   Converged! Delta: 62.50 MB < 500 MB
 [2025-01-15T10:30:25.000Z] ═══════════════════════════════════════
 [2025-01-15T10:30:25.000Z] RESULT: Estimated RAM needed: 625.00 MB
+[2025-01-15T10:30:25.000Z] RESULT: Runtime: 5.23 seconds
 [2025-01-15T10:30:25.000Z] ═══════════════════════════════════════
 [2025-01-15T10:30:26.000Z] Cleaning up temporary resources...
   Deleting copied workflow: <workflow-id>
@@ -216,19 +196,21 @@ dart compile exe bin/memory_estimator_v2.dart -o memory_estimator
 When using `--output results.csv` with ranges:
 
 ```csv
-n_obs,n_sp,n_variable,settings.k_neighbors,estimated_ram_mb
-100,4,4,5,512.50
-100,4,4,10,625.00
-100,4,4,15,750.00
-300,4,4,5,1024.00
-300,4,4,10,1250.00
-300,4,4,15,1500.00
-500,4,4,5,1750.00
-500,4,4,10,2000.00
-500,4,4,15,2250.00
+n_obs,n_sp,n_variable,settings.k_neighbors,estimated_ram_mb,runtime_seconds
+100,4,4,5,512.50,2.34
+100,4,4,10,625.00,3.12
+100,4,4,15,750.00,4.56
+300,4,4,5,1024.00,8.90
+300,4,4,10,1250.00,10.23
+300,4,4,15,1500.00,12.45
+500,4,4,5,1750.00,15.67
+500,4,4,10,2000.00,18.90
+500,4,4,15,2250.00,21.34
 ```
 
-Note: Operator settings are prefixed with `settings.` in the CSV output.
+Note:
+- Operator settings are prefixed with `settings.` in the CSV output
+- `runtime_seconds` shows the execution time of the last successful run at the estimated RAM level
 
 ## Range Syntax
 
@@ -241,22 +223,4 @@ Examples:
 - `--n-obs 100:5:1000` → Tests: 100, 325, 550, 775, 1000 (5 values)
 - `--setting.k 5:3:15` → Tests: 5, 10, 15 (3 values)
 - `--n-sp 2:4:8` → Tests: 2, 4, 6, 8 (4 values)
-
-## Troubleshooting
-
-### Authentication errors
-Ensure your `--username` and `--password` are correct and the user/team has appropriate permissions.
-
-### "Repository not found" error
-Verify the `--repo-url` is a valid GitHub repository URL accessible to your Tercen instance.
-
-### "Step not found" error
-The tool automatically detects the DataStep and TableStep from the template workflow. If this fails, ensure the template workflow has at least one DataStep and one TableStep.
-
-### Memory estimation reaches max limit
-If estimation hits `--max-ram` limit, try increasing the max-ram parameter or optimizing your operator.
-
-## License
-
-See LICENSE file for details.
 
