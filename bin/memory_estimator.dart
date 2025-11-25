@@ -785,6 +785,7 @@ class MemoryEstimatorScript {
     var lowerBound = ram;
     var upperBound = maxRamMb * mb;
     var growthFactor = 1.5; // Increase by 50% each iteration
+    var currentTime = -1.0;
 
     while (ram < maxRamMb * mb) {
       final ramMb = ram / mb;
@@ -803,12 +804,11 @@ class MemoryEstimatorScript {
           stepsToRun: [stepId]);
 
       // Check if the step succeeded or failed
-      final stepState = workflow.steps
+      final step = workflow.steps
           .whereType<sci.DataStep>()
           .where((s) => s.id == stepId)
-          .first
-          .state
-          .taskState;
+          .first;
+      final stepState = step.state.taskState;
 
       if (stepState is sci.FailedState) {
         // Check if it's a memory error
@@ -827,6 +827,9 @@ class MemoryEstimatorScript {
       } else if (stepState is sci.DoneState) {
         logIndent("  → Success! Found upper bound.");
         upperBound = ram;
+        // Capture the runtime from this successful run
+        final task = await tercen.ServiceFactory().taskService.get(step.state.taskId) as sci.RunComputationTask;
+        currentTime = task.duration;
         break;
       } else {
         logIndent("  → Unexpected state: ${stepState.runtimeType}");
@@ -846,7 +849,6 @@ class MemoryEstimatorScript {
 
     var currentMin = lowerBound;
     var currentMax = upperBound;
-    var currentTime = -1.0;
     var stopThreshold = thresholdMb * mb;
 
     while (true) {
@@ -879,11 +881,8 @@ class MemoryEstimatorScript {
           .whereType<sci.DataStep>()
           .where((s) => s.id == stepId)
           .first;
-      final stepState = step
-          .state
-          .taskState;
-      final task = await tercen.ServiceFactory().taskService.get( step.state.taskId) as sci.RunComputationTask;
-      currentTime = task.duration;
+      final stepState = step.state.taskState;
+
       if (stepState is sci.FailedState) {
         // Check if it's a memory error
         final isMemoryError = stepState.error == "run.operator.exit.code.137" &&
@@ -892,7 +891,6 @@ class MemoryEstimatorScript {
         if (isMemoryError) {
           logIndent("  → Insufficient memory, increasing...");
           currentMin = ram;
-
         } else {
           logIndent("  → Failed with error: ${stepState.error}");
           throw Exception(
@@ -901,6 +899,9 @@ class MemoryEstimatorScript {
       } else if (stepState is sci.DoneState) {
         logIndent("  → Success! Decreasing RAM to find minimum...");
         currentMax = ram;
+        // Capture the runtime from this successful run
+        final task = await tercen.ServiceFactory().taskService.get(step.state.taskId) as sci.RunComputationTask;
+        currentTime = task.duration;
       } else {
         logIndent("  → Unexpected state: ${stepState.runtimeType}");
         throw Exception("Unexpected step state: ${stepState.runtimeType}");
