@@ -325,7 +325,7 @@ void main(List<String> arguments) async {
         print('\n${'=' * 80}');
         print('GRID SEARCH RESULTS');
         print('=' * 80);
-        print('${allParamNames.join(',')},estimated_ram_mb');
+        print('${allParamNames.join(',')},estimated_ram_mb,runtime_seconds');
 
         // Store results for summary table
         final results = <Map<String, dynamic>>[];
@@ -363,7 +363,9 @@ void main(List<String> arguments) async {
             operatorSettings: comboSettings,
           );
 
-          final ramMb = await estimator.run();
+          final result = await estimator.run();
+          final ramMb = result['ram']!;
+          final runtime = result['time']!;
 
           // Build result row
           final rowValues = <String>[];
@@ -384,7 +386,7 @@ void main(List<String> arguments) async {
           }
 
           // Print CSV row
-          print('${rowValues.join(',')},${ramMb.toStringAsFixed(2)}');
+          print('${rowValues.join(',')},${ramMb.toStringAsFixed(2)},${runtime.toStringAsFixed(2)}');
 
           // Store for summary
           final resultMap = <String, dynamic>{};
@@ -392,6 +394,7 @@ void main(List<String> arguments) async {
             resultMap[allParamNames[j]] = rowValues[j];
           }
           resultMap['estimated_ram_mb'] = ramMb;
+          resultMap['runtime_seconds'] = runtime;
           results.add(resultMap);
         }
 
@@ -399,14 +402,14 @@ void main(List<String> arguments) async {
         print('\n${'=' * 80}');
         print('SUMMARY TABLE');
         print('=' * 80);
-        final csvHeader = '${allParamNames.join(',')},estimated_ram_mb';
+        final csvHeader = '${allParamNames.join(',')},estimated_ram_mb,runtime_seconds';
         print(csvHeader);
         final csvRows = <String>[];
         for (var result in results) {
           final values =
               allParamNames.map((name) => result[name].toString()).join(',');
           final row =
-              '$values,${result['estimated_ram_mb'].toStringAsFixed(2)}';
+              '$values,${result['estimated_ram_mb'].toStringAsFixed(2)},${result['runtime_seconds'].toStringAsFixed(2)}';
           print(row);
           csvRows.add(row);
         }
@@ -545,7 +548,7 @@ class MemoryEstimatorScript {
     print("  $message");
   }
 
-  Future<double> run() async {
+  Future<Map<String, double>> run() async {
     log("Initializing memory estimator");
 
     // Use existing AppSession (already initialized in main)
@@ -563,16 +566,20 @@ class MemoryEstimatorScript {
     String? syntheticDataId;
 
     try {
-      final estimatedRam = await estimateRequiredRam(
+      final result = await estimateRequiredRam(
         onWorkflowCopied: (id) => copiedWorkflowId = id,
         onDataCreated: (id) => syntheticDataId = id,
       );
 
+      final estimatedRam = result[0];
+      final runtime = result[1];
+
       log("═══════════════════════════════════════");
       log("RESULT: Estimated RAM needed: ${estimatedRam.toStringAsFixed(2)} MB");
+      log("RESULT: Runtime: ${runtime.toStringAsFixed(2)} seconds");
       log("═══════════════════════════════════════");
 
-      return estimatedRam;
+      return {'ram': estimatedRam, 'time': runtime};
     } finally {
       // Cleanup
       await cleanup(
@@ -703,7 +710,7 @@ class MemoryEstimatorScript {
     return renameRel;
   }
 
-  Future<double> estimateRequiredRam({
+  Future<List<double>> estimateRequiredRam({
     required void Function(String) onWorkflowCopied,
     required void Function(String) onDataCreated,
   }) async {
@@ -829,7 +836,7 @@ class MemoryEstimatorScript {
 
     if (upperBound >= maxRamMb * mb) {
       log("WARNING: Reached maximum RAM limit of ${maxRamMb} MB in exponential phase");
-      return maxRamMb;
+      return [maxRamMb, -1];
     }
 
     // PHASE 2: Binary Search - Find precise minimum
@@ -839,6 +846,7 @@ class MemoryEstimatorScript {
 
     var currentMin = lowerBound;
     var currentMax = upperBound;
+    var currentTime = -1.0;
     var stopThreshold = thresholdMb * mb;
 
     while (true) {
@@ -867,13 +875,15 @@ class MemoryEstimatorScript {
           stepsToRun: [stepId]);
 
       // Check if the step succeeded or failed
-      final stepState = workflow.steps
+      final step = workflow.steps
           .whereType<sci.DataStep>()
           .where((s) => s.id == stepId)
-          .first
+          .first;
+      final stepState = step
           .state
           .taskState;
-
+      final task = await tercen.ServiceFactory().taskService.get( step.state.taskId) as sci.RunComputationTask;
+      currentTime = task.duration;
       if (stepState is sci.FailedState) {
         // Check if it's a memory error
         final isMemoryError = stepState.error == "run.operator.exit.code.137" &&
@@ -882,6 +892,7 @@ class MemoryEstimatorScript {
         if (isMemoryError) {
           logIndent("  → Insufficient memory, increasing...");
           currentMin = ram;
+
         } else {
           logIndent("  → Failed with error: ${stepState.error}");
           throw Exception(
@@ -896,7 +907,7 @@ class MemoryEstimatorScript {
       }
     }
 
-    return currentMax / mb;
+    return [currentMax / mb, currentTime];
   }
 
   Future<sci.Workflow> _updateCubeQueryTask({
