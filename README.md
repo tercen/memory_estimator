@@ -76,20 +76,13 @@ This will run memory estimation using the parameters defined in `memory_tests.js
 - `--username`: Tercen username for authentication
 - `--password`: Tercen password for authentication
 
-**Optional (override memory_tests.json):**
+**Optional:**
 - `-u, --tercen-url`: Tercen service URL (default: http://127.0.0.1:5400)
 - `--repo-version`: Git tag/version to test (optional)
 - `--repo-branch`: Git branch to test (default: main)
-- `--n-obs`: Number of observations - overrides JSON config (e.g., `500` or `100:5:1000` for range)
-- `--n-sp`: Number of species - overrides JSON config
-- `--n-variable`: Number of variables - overrides JSON config
-- `--min-ram`: Minimum RAM to test in MB - overrides JSON config
-- `--max-ram`: Maximum RAM to test in MB - overrides JSON config
-- `--threshold`: Stop threshold in MB - overrides JSON config
 - `-o, --output`: Output file path to save results as CSV (especially useful for grid search)
-- `--setting.NAME=VALUE`: Set operator setting - overrides JSON config (e.g., `--setting.k_neighbors=5` or `--setting.k_neighbors=5:3:15` for range)
 
-**Configuration Precedence:** CLI arguments > memory_tests.json > Defaults
+**Important:** All test configuration (data parameters, RAM limits, operator settings) must be defined in `memory_tests.json` in the operator repository. CLI overrides are not supported.
 
 **Range Format:** Use `min:n_steps:max` to define intervals:
 - `min`: Starting value (inclusive)
@@ -206,21 +199,20 @@ dart run bin/memory_estimator.dart \
 
 This uses all parameters from the operator's `memory_tests.json` file.
 
-### Single Run with CLI Override
+### Single Run with Different Repository Version
 
-Override specific JSON values via CLI:
+Test a specific version or branch:
 
 ```bash
 dart run bin/memory_estimator.dart \
   --repo-url https://github.com/tercen/pca_operator \
+  --repo-version 1.0.0 \
   --team-name my_team \
   --username myuser \
-  --password mypass \
-  --n-obs 1000 \
-  --setting.n_components 10
+  --password mypass
 ```
 
-This uses JSON config but overrides `n_obs` and the `n_components` setting.
+This uses the `memory_tests.json` from the specified version tag.
 
 ### Grid Search from JSON Configuration
 
@@ -250,20 +242,6 @@ dart run bin/memory_estimator.dart \
 
 This will test 15 combinations (5 n-obs values × 3 k_neighbors values) and save results to CSV.
 
-### Grid Search with CLI Override
-
-Override JSON ranges via CLI:
-
-```bash
-dart run bin/memory_estimator.dart \
-  --repo-url https://github.com/tercen/knn_operator \
-  --team-name my_team \
-  --username myuser \
-  --password mypass \
-  --n-obs 200:3:800 \
-  --output results.csv
-```
-
 ### Testing Enumeration Settings
 
 If your `memory_tests.json` contains:
@@ -288,7 +266,25 @@ dart run bin/memory_estimator.dart \
 
 This will test all plot_type values (png, pdf, svg, svg2) × 2 theme values (light, dark) = 8 combinations.
 
-### Grid Search with Multiple Operator Settings
+### Grid Search with Multiple Ranges
+
+If your `memory_tests.json` contains multiple ranges:
+
+```json
+{
+  "data_params": {
+    "n_obs": "100:3:500",
+    "n_sp": "2:3:8",
+    "n_variable": 4
+  },
+  "operator_settings": {
+    "n_clusters": "3:3:9",
+    "method": "kmeans"
+  }
+}
+```
+
+Run with:
 
 ```bash
 dart run bin/memory_estimator.dart \
@@ -296,12 +292,10 @@ dart run bin/memory_estimator.dart \
   --team-name my_team \
   --username myuser \
   --password mypass \
-  --n-obs 100:3:500 \
-  --n-sp 2:3:8 \
-  --setting.n_clusters 3:3:9 \
-  --setting.method kmeans \
   --output memory_profile.csv
 ```
+
+This tests 3 × 3 × 3 = 27 combinations (n_obs × n_sp × n_clusters).
 
 ## How It Works
 

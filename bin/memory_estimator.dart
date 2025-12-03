@@ -264,7 +264,6 @@ List<Map<String, dynamic>> _generateCombinedGrid({
 
 void main(List<String> arguments) async {
   // Parse command-line arguments
-  // Updated lib
   final parser = ArgParser()
     ..addOption('tercen-url',
         abbr: 'u',
@@ -283,93 +282,26 @@ void main(List<String> arguments) async {
     ..addOption('repo-branch',
         abbr: 'b',
         mandatory: false,
-        help: 'Github repo version of the tested operator',
+        help: 'Github repo branch of the tested operator',
         defaultsTo: "main")
     ..addOption('team-name',
-        mandatory: true, help: 'Team name for workflow copy')
-    ..addOption('n-obs',
-        help: 'Number of observations (overrides JSON config, or min:n:max for range)')
-    ..addOption('n-sp',
-        help: 'Number of species (overrides JSON config, or min:n:max for range)')
-    ..addOption('n-variable',
-        help: 'Number of variables (overrides JSON config, or min:n:max for range)')
-    ..addOption('min-ram',
-        help: 'Minimum RAM to test in MB (overrides JSON config)')
-    ..addOption('max-ram',
-        help: 'Maximum RAM to test in MB (overrides JSON config)')
-    ..addOption('threshold',
-        help: 'Stop threshold in MB (overrides JSON config)')
+        mandatory: true, help: 'Team name for project and workflow ownership')
     ..addOption('output',
         abbr: 'o', help: 'Output file path to save summary table as CSV')
     ..addFlag('help',
         abbr: 'h', negatable: false, help: 'Show usage information');
 
   try {
-    // Extract operator settings from arguments with 'setting.' prefix BEFORE parsing
-    final operatorSettings = <String, String>{};
-    final operatorSettingRanges = <String, List<double>>{};
-    final cleanArguments = <String>[];
-
-    for (var arg in arguments) {
-      if (arg.startsWith('--setting.')) {
-        final parts = arg.substring(2).split('=');
-        if (parts.length == 2) {
-          final settingName = parts[0].substring('setting.'.length);
-          final settingValue = parts[1];
-
-          // Check if it's a range specification (min:n_steps:max)
-          if (settingValue.contains(':')) {
-            final rangeParts = settingValue.split(':');
-            if (rangeParts.length == 3) {
-              final min = double.parse(rangeParts[0]);
-              final nSteps = int.parse(rangeParts[1]);
-              final max = double.parse(rangeParts[2]);
-
-              // Generate values
-              final values = <double>[];
-              if (nSteps == 1) {
-                values.add(min);
-              } else {
-                final step = (max - min) / (nSteps - 1);
-                for (int i = 0; i < nSteps; i++) {
-                  values.add(min + i * step);
-                }
-              }
-              operatorSettingRanges[settingName] = values;
-            } else {
-              operatorSettings[settingName] = settingValue;
-            }
-          } else {
-            operatorSettings[settingName] = settingValue;
-          }
-        }
-      } else {
-        cleanArguments.add(arg);
-      }
-    }
-
-    final results = parser.parse(cleanArguments);
+    final results = parser.parse(arguments);
 
     if (results['help'] as bool) {
       print('Memory Estimator - A tool for estimating memory requirements');
       print(
-          '\nUsage: dart run bin/memory_estimator.dart.bkp [options] [--setting.NAME=VALUE ...]');
-      print('\nOptions:');
+          '\nUsage: dart run bin/memory_estimator.dart [options]');
+      print('\nAll test parameters (data sizes, RAM limits, operator settings) must be');
+      print('defined in memory_tests.json in the operator repository.\n');
+      print('Options:');
       print(parser.usage);
-      print('\nOperator Settings:');
-      print(
-          '  --setting.NAME=VALUE         Set operator setting NAME to VALUE');
-      print(
-          '  --setting.NAME=min:n:max     Test range from min to max with n values');
-      print(
-          '                               (performs grid search for all combinations)');
-      print('');
-      print('  Examples:');
-      print('    --setting.k_neighbors=5');
-      print('    --setting.k_neighbors=5:3:15     # Tests values: 5, 10, 15');
-      print(
-          '    --setting.alpha=0.1:5:0.9        # Tests 5 values from 0.1 to 0.9');
-      print('    --setting.metric=euclidean --setting.k=3:4:10  # Grid search');
       return;
     }
 
@@ -418,45 +350,69 @@ void main(List<String> arguments) async {
       tag: repoVersion,
     );
 
-    // Merge configurations: CLI > JSON > Defaults
-    // Helper to get value with precedence: CLI arg > JSON > default
-    String getConfigValue(String cliKey, String? jsonKey, String defaultValue) {
-      final cliValue = results[cliKey] as String?;
-      if (cliValue != null && cliValue.isNotEmpty) return cliValue;
-
-      if (jsonKey != null) {
-        if (jsonKey.startsWith('data_params.')) {
-          final key = jsonKey.substring('data_params.'.length);
-          final value = config.dataParams?[key];
-          if (value != null) return value.toString();
-        } else if (jsonKey.startsWith('ram_limits.')) {
-          final key = jsonKey.substring('ram_limits.'.length);
-          final value = config.ramLimits?[key];
-          if (value != null) return value.toString();
-        }
+    // Get configuration values from JSON with defaults
+    String getConfigValue(String jsonKey, String defaultValue) {
+      if (jsonKey.startsWith('data_params.')) {
+        final key = jsonKey.substring('data_params.'.length);
+        final value = config.dataParams?[key];
+        if (value != null) return value.toString();
+      } else if (jsonKey.startsWith('ram_limits.')) {
+        final key = jsonKey.substring('ram_limits.'.length);
+        final value = config.ramLimits?[key];
+        if (value != null) return value.toString();
       }
-
       return defaultValue;
     }
 
-    final minRamMb = double.parse(getConfigValue('min-ram', 'ram_limits.min_ram_mb', '500'));
-    final maxRamMb = double.parse(getConfigValue('max-ram', 'ram_limits.max_ram_mb', '40000'));
-    final thresholdMb = double.parse(getConfigValue('threshold', 'ram_limits.threshold_mb', '500'));
+    final minRamMb = double.parse(getConfigValue('ram_limits.min_ram_mb', '500'));
+    final maxRamMb = double.parse(getConfigValue('ram_limits.max_ram_mb', '40000'));
+    final thresholdMb = double.parse(getConfigValue('ram_limits.threshold_mb', '500'));
 
-    // Merge operator settings from JSON and CLI
-    final mergedOperatorSettings = <String, String>{
-      ...?config.operatorSettings, // JSON settings first
-      ...operatorSettings, // CLI settings override
+    // Get operator settings from JSON only
+    final operatorSettings = <String, String>{
+      ...?config.operatorSettings,
     };
-    final mergedOperatorSettingRanges = <String, List<double>>{
-      ...operatorSettingRanges, // CLI ranges (if any)
-    };
+
+    // Process operator settings to separate numeric ranges from other settings
+    final operatorSettingRanges = <String, List<double>>{};
+    final settingsToProcess = <String, String>{...operatorSettings};
+
+    for (var entry in settingsToProcess.entries) {
+      final settingName = entry.key;
+      final settingValue = entry.value;
+
+      // Check if it's a numeric range (and NOT an enumeration)
+      if (settingValue.contains(':') && !enumerations.containsKey(settingName)) {
+        final rangeParts = settingValue.split(':');
+        if (rangeParts.length == 3) {
+          try {
+            final min = double.parse(rangeParts[0]);
+            final nSteps = int.parse(rangeParts[1]);
+            final max = double.parse(rangeParts[2]);
+
+            final values = <double>[];
+            if (nSteps == 1) {
+              values.add(min);
+            } else {
+              final step = (max - min) / (nSteps - 1);
+              for (int i = 0; i < nSteps; i++) {
+                values.add(min + i * step);
+              }
+            }
+            operatorSettingRanges[settingName] = values;
+            operatorSettings.remove(settingName);
+          } catch (e) {
+            // Not a valid numeric range, keep as regular setting
+          }
+        }
+      }
+    }
 
     // Process enumeration settings - expand special syntax
     final enumSettingRanges = <String, List<String>>{};
     final settingsToRemove = <String>[];
 
-    for (var entry in mergedOperatorSettings.entries) {
+    for (var entry in operatorSettings.entries) {
       final settingName = entry.key;
       final settingValue = entry.value;
 
@@ -495,7 +451,7 @@ void main(List<String> arguments) async {
 
     // Remove enumeration settings that have been converted to ranges
     for (var key in settingsToRemove) {
-      mergedOperatorSettings.remove(key);
+      operatorSettings.remove(key);
     }
 
 
@@ -520,13 +476,13 @@ void main(List<String> arguments) async {
       int? nVariableSingle;
 
       for (var param in [
-        {'name': 'n-obs', 'key': 'n_obs'},
-        {'name': 'n-sp', 'key': 'n_sp'},
-        {'name': 'n-variable', 'key': 'n_variable'}
+        {'key': 'n_obs'},
+        {'key': 'n_sp'},
+        {'key': 'n_variable'}
       ]) {
-        final value = getConfigValue(param['name']!, 'data_params.${param['key']!}', '');
+        final value = getConfigValue('data_params.${param['key']!}', '');
         if (value.isEmpty) {
-          // Use default if not in CLI or JSON
+          // Use default if not in JSON
           if (param['key'] == 'n_obs') nObsSingle = 500;
           if (param['key'] == 'n_sp') nSpSingle = 4;
           if (param['key'] == 'n_variable') nVariableSingle = 4;
@@ -560,14 +516,14 @@ void main(List<String> arguments) async {
       }
 
       // Check if we need to do grid search
-      if (mergedOperatorSettingRanges.isNotEmpty || enumSettingRanges.isNotEmpty || dataParamRanges.isNotEmpty) {
+      if (operatorSettingRanges.isNotEmpty || enumSettingRanges.isNotEmpty || dataParamRanges.isNotEmpty) {
         // Grid search mode
         final totalCombos = (dataParamRanges.values.isEmpty
                 ? 1
                 : dataParamRanges.values.fold(1, (p, l) => p * l.length)) *
-            (mergedOperatorSettingRanges.values.isEmpty
+            (operatorSettingRanges.values.isEmpty
                 ? 1
-                : mergedOperatorSettingRanges.values.fold(1, (p, l) => p * l.length)) *
+                : operatorSettingRanges.values.fold(1, (p, l) => p * l.length)) *
             (enumSettingRanges.values.isEmpty
                 ? 1
                 : enumSettingRanges.values.fold(1, (p, l) => p * l.length));
@@ -576,9 +532,9 @@ void main(List<String> arguments) async {
         // Generate all combinations
         final combinations = _generateCombinedGrid(
           dataRanges: dataParamRanges,
-          settingRanges: mergedOperatorSettingRanges,
+          settingRanges: operatorSettingRanges,
           enumRanges: enumSettingRanges,
-          fixedSettings: mergedOperatorSettings,
+          fixedSettings: operatorSettings,
           nObsDefault: nObsSingle,
           nSpDefault: nSpSingle,
           nVariableDefault: nVariableSingle,
@@ -597,9 +553,9 @@ void main(List<String> arguments) async {
 
         // Add operator settings params (sorted), prefixed with "settings."
         final settingNames = <String>{
-          ...mergedOperatorSettingRanges.keys,
+          ...operatorSettingRanges.keys,
           ...enumSettingRanges.keys,
-          ...mergedOperatorSettings.keys
+          ...operatorSettings.keys
         }.toList()
           ..sort();
         allParamNames.addAll(settingNames.map((name) => 'settings.$name'));
@@ -711,9 +667,9 @@ void main(List<String> arguments) async {
         }
       } else {
         // Single run mode
-        if (mergedOperatorSettings.isNotEmpty) {
+        if (operatorSettings.isNotEmpty) {
           print('Operator settings:');
-          mergedOperatorSettings.forEach((key, value) {
+          operatorSettings.forEach((key, value) {
             print('  $key = $value');
           });
         }
@@ -730,7 +686,7 @@ void main(List<String> arguments) async {
           minRamMb: minRamMb,
           maxRamMb: maxRamMb,
           thresholdMb: thresholdMb,
-          operatorSettings: mergedOperatorSettings,
+          operatorSettings: operatorSettings,
         );
 
         await estimator.run();
