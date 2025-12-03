@@ -5,19 +5,24 @@ A command-line tool for estimating memory requirements for Tercen workflows thro
 ## Overview
 
 The Memory Estimator performs automated RAM requirement analysis by:
-1. Creating a test project from a GitHub repository
-2. Generating and injecting synthetic data with configurable parameters
-3. Using hybrid exponential + binary search to find minimum required RAM
-4. Optionally running grid searches across multiple parameter combinations
-5. Automatically cleaning up all temporary resources (project, workflows, data)
+1. Installing an operator from a GitHub repository
+2. Reading configuration from `memory_tests.json` in the operator repository
+3. Generating and injecting synthetic data with configurable parameters
+4. Using hybrid exponential + binary search to find minimum required RAM
+5. Optionally running grid searches across multiple parameter combinations
+6. Automatically cleaning up all temporary resources (project, workflows, data)
 
 ### IMPORTANT NOTE ABOUT WORKFLOW AND PROJECTION
 
-This script will run a workflow names <code>memory_workflow</code> in the operator project.
+This script will run a workflow named <code>memory_workflow</code> in the operator project.
 
 <code>memory_workflow</code> is a template and must contain a TableStep and a DataStep.
 
 **The input data and projection MUST be based on the Crabs dataset**
+
+### Configuration File Required
+
+Each operator repository **must include** a `memory_tests.json` file at the root directory. This file defines the test parameters for memory estimation. The tool will fail if this file is missing.
 
 ## Quick Start
 
@@ -26,6 +31,30 @@ This script will run a workflow names <code>memory_workflow</code> in the operat
 ```bash
 dart pub get
 ```
+
+### Create memory_tests.json in your operator repository
+
+Add a `memory_tests.json` file at the root of your operator repository:
+
+```json
+{
+  "data_params": {
+    "n_obs": 500,
+    "n_sp": 4,
+    "n_variable": 4
+  },
+  "ram_limits": {
+    "min_ram_mb": 500,
+    "max_ram_mb": 40000,
+    "threshold_mb": 500
+  },
+  "operator_settings": {
+    "setting_name": "value"
+  }
+}
+```
+
+All fields are optional. If not specified, defaults or CLI arguments will be used.
 
 ### Basic usage
 
@@ -37,7 +66,7 @@ dart run bin/memory_estimator.dart \
   --password <PASSWORD>
 ```
 
-This will run a single memory estimation with default parameters (500 observations, 4 species, 4 variables).
+This will run memory estimation using the parameters defined in `memory_tests.json` from the operator repository.
 
 ## Command-Line Options
 
@@ -47,16 +76,20 @@ This will run a single memory estimation with default parameters (500 observatio
 - `--username`: Tercen username for authentication
 - `--password`: Tercen password for authentication
 
-**Optional:**
+**Optional (override memory_tests.json):**
 - `-u, --tercen-url`: Tercen service URL (default: http://127.0.0.1:5400)
-- `--n-obs`: Number of observations - single value (default: 500) or range (e.g., `100:5:1000` for 5 values from 100 to 1000)
-- `--n-sp`: Number of species - single value (default: 4) or range
-- `--n-variable`: Number of variables - single value (default: 4) or range
-- `--min-ram`: Minimum RAM to test in MB (default: 500)
-- `--max-ram`: Maximum RAM to test in MB (default: 40000)
-- `--threshold`: Stop threshold in MB (default: 500) - binary search stops when range is smaller than this
+- `--repo-version`: Git tag/version to test (optional)
+- `--repo-branch`: Git branch to test (default: main)
+- `--n-obs`: Number of observations - overrides JSON config (e.g., `500` or `100:5:1000` for range)
+- `--n-sp`: Number of species - overrides JSON config
+- `--n-variable`: Number of variables - overrides JSON config
+- `--min-ram`: Minimum RAM to test in MB - overrides JSON config
+- `--max-ram`: Maximum RAM to test in MB - overrides JSON config
+- `--threshold`: Stop threshold in MB - overrides JSON config
 - `-o, --output`: Output file path to save results as CSV (especially useful for grid search)
-- `--setting.NAME=VALUE`: Set operator setting - single value (e.g., `--setting.k_neighbors=5`) or range (e.g., `--setting.k_neighbors=5:3:15`)
+- `--setting.NAME=VALUE`: Set operator setting - overrides JSON config (e.g., `--setting.k_neighbors=5` or `--setting.k_neighbors=5:3:15` for range)
+
+**Configuration Precedence:** CLI arguments > memory_tests.json > Defaults
 
 **Range Format:** Use `min:n_steps:max` to define intervals:
 - `min`: Starting value (inclusive)
@@ -71,9 +104,97 @@ When multiple range parameters are specified, the tool performs a **grid search*
 - n_obs=500, k=5
 - n_obs=500, k=10
 
+## memory_tests.json Configuration
+
+The `memory_tests.json` file must be placed at the root of your operator repository. This file defines the default test configuration.
+
+### JSON Schema
+
+```json
+{
+  "data_params": {
+    "n_obs": <number or "min:steps:max" string>,
+    "n_sp": <number or "min:steps:max" string>,
+    "n_variable": <number or "min:steps:max" string>
+  },
+  "ram_limits": {
+    "min_ram_mb": <number>,
+    "max_ram_mb": <number>,
+    "threshold_mb": <number>
+  },
+  "operator_settings": {
+    "<setting_name>": <value or "min:steps:max" string>,
+    ...
+  }
+}
+```
+
+### Example Configurations
+
+**Simple single test:**
+```json
+{
+  "data_params": {
+    "n_obs": 1000,
+    "n_sp": 4,
+    "n_variable": 5
+  },
+  "ram_limits": {
+    "min_ram_mb": 500,
+    "max_ram_mb": 8000,
+    "threshold_mb": 250
+  }
+}
+```
+
+**Grid search with ranges:**
+```json
+{
+  "data_params": {
+    "n_obs": "100:5:1000",
+    "n_sp": 4,
+    "n_variable": 4
+  },
+  "operator_settings": {
+    "k_neighbors": "5:3:15",
+    "metric": "euclidean"
+  }
+}
+```
+
+This will test 5 observation counts (100, 325, 550, 775, 1000) × 3 k values (5, 10, 15) = 15 combinations.
+
+**Enumeration settings (testing multiple values):**
+```json
+{
+  "data_params": {
+    "n_obs": 500,
+    "n_sp": 4,
+    "n_variable": 4
+  },
+  "operator_settings": {
+    "plot_type": "*",
+    "theme": "light,dark,minimal"
+  }
+}
+```
+
+For enumeration properties defined in `operator.json`:
+- Use `"*"` to test **all** possible values (e.g., all plot types: png, pdf, svg, svg2)
+- Use comma-separated values to test a **subset** (e.g., "light,dark,minimal")
+- Use a single value for a **fixed** setting (e.g., "png")
+- Values are automatically validated against the operator's enum definitions
+
+**Notes:**
+- All fields are optional
+- Values can be overridden via CLI arguments
+- Range syntax for numeric values: `"min:n_steps:max"` where n_steps is the total number of values to test
+- Operator settings can mix fixed values, numeric ranges, and enumeration values
+- Enumeration values are read from the operator's `operator.json` file
+
 ## Usage Examples
 
-### Single Run with Defaults
+### Single Run Using JSON Configuration
 
 ```bash
 dart run bin/memory_estimator.dart \
@@ -83,7 +204,11 @@ dart run bin/memory_estimator.dart \
   --password mypass
 ```
 
-### Single Run with Custom Parameters
+This uses all parameters from the operator's `memory_tests.json` file.
+
+### Single Run with CLI Override
+
+Override specific JSON values via CLI:
 
 ```bash
 dart run bin/memory_estimator.dart \
@@ -92,14 +217,27 @@ dart run bin/memory_estimator.dart \
   --username myuser \
   --password mypass \
   --n-obs 1000 \
-  --n-sp 8 \
-  --n-variable 6 \
-  --setting.n_components 5
+  --setting.n_components 10
 ```
 
-### Grid Search Across Multiple Parameters
+This uses JSON config but overrides `n_obs` and the `n_components` setting.
 
-Test combinations of data sizes and operator settings:
+### Grid Search from JSON Configuration
+
+If your `memory_tests.json` contains ranges:
+
+```json
+{
+  "data_params": {
+    "n_obs": "100:5:1000"
+  },
+  "operator_settings": {
+    "k_neighbors": "5:3:15"
+  }
+}
+```
+
+Run with:
 
 ```bash
 dart run bin/memory_estimator.dart \
@@ -107,12 +245,48 @@ dart run bin/memory_estimator.dart \
   --team-name my_team \
   --username myuser \
   --password mypass \
-  --n-obs 100:5:1000 \
-  --setting.k_neighbors 5:3:15 \
   --output results.csv
 ```
 
 This will test 15 combinations (5 n-obs values × 3 k_neighbors values) and save results to CSV.
+
+### Grid Search with CLI Override
+
+Override JSON ranges via CLI:
+
+```bash
+dart run bin/memory_estimator.dart \
+  --repo-url https://github.com/tercen/knn_operator \
+  --team-name my_team \
+  --username myuser \
+  --password mypass \
+  --n-obs 200:3:800 \
+  --output results.csv
+```
+
+### Testing Enumeration Settings
+
+If your `memory_tests.json` contains:
+```json
+{
+  "operator_settings": {
+    "plot_type": "*",
+    "theme": "light,dark"
+  }
+}
+```
+
+Run with:
+```bash
+dart run bin/memory_estimator.dart \
+  --repo-url https://github.com/tercen/plot_operator \
+  --team-name my_team \
+  --username myuser \
+  --password mypass \
+  --output plot_tests.csv
+```
+
+This will test all plot_type values (png, pdf, svg, svg2) × 2 theme values (light, dark) = 8 combinations.
 
 ### Grid Search with Multiple Operator Settings
 

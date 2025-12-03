@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'package:args/args.dart';
@@ -18,12 +19,180 @@ import 'package:webapp_core/utils/string_utils.dart';
 import 'package:webapp_core/runner/utils/cache_object.dart';
 import 'package:memory_estimator/cube_query_builder.dart';
 
+/// Configuration loaded from memory_tests.json
+class MemoryTestConfig {
+  final Map<String, dynamic>? dataParams;
+  final Map<String, dynamic>? ramLimits;
+  final Map<String, String>? operatorSettings;
 
+  MemoryTestConfig({
+    this.dataParams,
+    this.ramLimits,
+    this.operatorSettings,
+  });
+
+  factory MemoryTestConfig.fromJson(Map<String, dynamic> json) {
+    return MemoryTestConfig(
+      dataParams: json['data_params'] as Map<String, dynamic>?,
+      ramLimits: json['ram_limits'] as Map<String, dynamic>?,
+      operatorSettings: (json['operator_settings'] as Map<String, dynamic>?)
+          ?.map((key, value) => MapEntry(key, value.toString())),
+    );
+  }
+}
+
+/// Enumerated property definition from operator.json
+class EnumeratedProperty {
+  final String name;
+  final String defaultValue;
+  final List<String> values;
+
+  EnumeratedProperty({
+    required this.name,
+    required this.defaultValue,
+    required this.values,
+  });
+
+  factory EnumeratedProperty.fromJson(Map<String, dynamic> json) {
+    return EnumeratedProperty(
+      name: json['name'] as String,
+      defaultValue: json['defaultValue'].toString(),
+      values: (json['values'] as List<dynamic>).map((v) => v.toString()).toList(),
+    );
+  }
+}
+
+/// Fetch operator.json from the installed operator project in Tercen
+Future<Map<String, EnumeratedProperty>> fetchOperatorEnumerations({
+  required String repoUrl,
+  required String teamName,
+  String? tag,
+}) async {
+  final tagName = tag ?? "latest";
+  final projectName = "$repoUrl@${tagName}_Test";
+
+  print("Fetching operator.json to extract enumeration properties...");
+
+  // Fetch the project
+  final project = await ProjectDataService()
+      .fetchProjectByName(projectName: projectName, owner: teamName);
+
+  if (project == null) {
+    throw Exception(
+        "Operator project not found: $projectName. Ensure the operator was installed correctly.");
+  }
+
+  // Find the operator.json file in the project
+  try {
+    final docs = await tercen.ServiceFactory()
+        .projectDocumentService
+        .findProjectObjectsByFolderAndName(
+              startKey: [project.id, '', 'operator.json'],
+              endKey: [project.id, '', 'operator.json']);
+
+    final operatorDoc = docs.firstWhere(
+      (doc) => doc.name == "operator.json",
+      orElse: () => throw Exception(
+          "operator.json not found in project $projectName."),
+    );
+
+    // Get the file content as stream and convert to bytes
+    final stream = tercen.ServiceFactory()
+        .fileService
+        .download(operatorDoc.id);
+
+    final bytes = await stream.toList();
+    final allBytes = bytes.expand((chunk) => chunk).toList();
+
+    // Parse JSON
+    final jsonString = utf8.decode(allBytes);
+    final jsonData = jsonDecode(jsonString) as Map<String, dynamic>;
+
+    // Extract enumerated properties
+    final enumerations = <String, EnumeratedProperty>{};
+    final properties = jsonData['properties'] as List<dynamic>?;
+
+    if (properties != null) {
+      for (var prop in properties) {
+        final propMap = prop as Map<String, dynamic>;
+        if (propMap['kind'] == 'EnumeratedProperty') {
+          final enumProp = EnumeratedProperty.fromJson(propMap);
+          enumerations[enumProp.name] = enumProp;
+        }
+      }
+    }
+
+    print("✓ Found ${enumerations.length} enumerated properties in operator.json");
+    return enumerations;
+  } catch (e) {
+    print("Warning: Could not load operator.json - $e");
+    return {};
+  }
+}
+
+/// Fetch memory_tests.json from the installed operator project in Tercen
+Future<MemoryTestConfig> fetchMemoryTestConfig({
+  required String repoUrl,
+  required String teamName,
+  String? tag,
+}) async {
+  final tagName = tag ?? "latest";
+  final projectName = "$repoUrl@${tagName}_Test";
+
+  print("Fetching memory_tests.json from project: $projectName");
+
+  // Fetch the project
+  final project = await ProjectDataService()
+      .fetchProjectByName(projectName: projectName, owner: teamName);
+
+  if (project == null) {
+    throw Exception(
+        "Operator project not found: $projectName. Ensure the operator was installed correctly.");
+  }
+
+  // Find the memory_tests.json file in the project
+  try {
+
+    final docs = await tercen.ServiceFactory()
+        .projectDocumentService
+        .findProjectObjectsByFolderAndName(
+              startKey: [project.id, '', 'memory_tests.json'],
+              endKey: [project.id, '', 'memory_tests.json']);
+
+    final memoryTestDoc = docs.firstWhere(
+      (doc) => doc.name == "memory_tests.json",
+      orElse: () => throw Exception(
+          "memory_tests.json not found in project $projectName. This file is required at the root of the operator repository."),
+    );
+
+
+    // Get the file content as stream and convert to bytes
+    final stream = tercen.ServiceFactory()
+        .fileService
+        .download(memoryTestDoc.id);
+
+    final bytes = await stream.toList();
+    final allBytes = bytes.expand((chunk) => chunk).toList();
+
+    // Parse JSON
+    final jsonString = utf8.decode(allBytes);
+    final jsonData = jsonDecode(jsonString) as Map<String, dynamic>;
+
+    print("✓ Successfully loaded memory_tests.json");
+    return MemoryTestConfig.fromJson(jsonData);
+  } catch (e) {
+    if (e.toString().contains("memory_tests.json not found")) {
+      rethrow;
+    }
+    throw Exception("Failed to load or parse memory_tests.json: $e");
+  }
+}
 
 /// Generate combined grid for data parameters and operator settings
 List<Map<String, dynamic>> _generateCombinedGrid({
   required Map<String, List<int>> dataRanges,
   required Map<String, List<double>> settingRanges,
+  required Map<String, List<String>> enumRanges,
   required Map<String, String> fixedSettings,
   int? nObsDefault,
   int? nSpDefault,
@@ -34,11 +203,13 @@ List<Map<String, dynamic>> _generateCombinedGrid({
   // Combine all parameter names
   final dataParamNames = dataRanges.keys.toList();
   final settingParamNames = settingRanges.keys.toList();
+  final enumParamNames = enumRanges.keys.toList();
 
-  void generate(int dataIndex, int settingIndex, Map<String, dynamic> current) {
-    // Done with data params, move to settings
+  void generate(int dataIndex, int settingIndex, int enumIndex, Map<String, dynamic> current) {
+    // Done with all params
     if (dataIndex == dataParamNames.length &&
-        settingIndex == settingParamNames.length) {
+        settingIndex == settingParamNames.length &&
+        enumIndex == enumParamNames.length) {
       // Add fixed settings and defaults
       final combo = Map<String, dynamic>.from(current);
       combo.addAll(fixedSettings);
@@ -62,7 +233,7 @@ List<Map<String, dynamic>> _generateCombinedGrid({
       for (var value in values) {
         final next = Map<String, dynamic>.from(current);
         next[paramName] = value;
-        generate(dataIndex + 1, settingIndex, next);
+        generate(dataIndex + 1, settingIndex, enumIndex, next);
       }
     } else if (settingIndex < settingParamNames.length) {
       final paramName = settingParamNames[settingIndex];
@@ -73,12 +244,21 @@ List<Map<String, dynamic>> _generateCombinedGrid({
         next[paramName] = value == value.toInt()
             ? value.toInt().toString()
             : value.toString();
-        generate(dataIndex, settingIndex + 1, next);
+        generate(dataIndex, settingIndex + 1, enumIndex, next);
+      }
+    } else if (enumIndex < enumParamNames.length) {
+      final paramName = enumParamNames[enumIndex];
+      final values = enumRanges[paramName]!;
+
+      for (var value in values) {
+        final next = Map<String, dynamic>.from(current);
+        next[paramName] = value;
+        generate(dataIndex, settingIndex, enumIndex + 1, next);
       }
     }
   }
 
-  generate(0, 0, {});
+  generate(0, 0, 0, {});
   return combinations;
 }
 
@@ -108,20 +288,17 @@ void main(List<String> arguments) async {
     ..addOption('team-name',
         mandatory: true, help: 'Team name for workflow copy')
     ..addOption('n-obs',
-        defaultsTo: '500',
-        help: 'Number of observations (default: 500, or min:n:max for range)')
+        help: 'Number of observations (overrides JSON config, or min:n:max for range)')
     ..addOption('n-sp',
-        defaultsTo: '4',
-        help: 'Number of species (default: 4, or min:n:max for range)')
+        help: 'Number of species (overrides JSON config, or min:n:max for range)')
     ..addOption('n-variable',
-        defaultsTo: '4',
-        help: 'Number of variables (default: 4, or min:n:max for range)')
+        help: 'Number of variables (overrides JSON config, or min:n:max for range)')
     ..addOption('min-ram',
-        defaultsTo: '500', help: 'Minimum RAM to test in MB (default: 500)')
+        help: 'Minimum RAM to test in MB (overrides JSON config)')
     ..addOption('max-ram',
-        defaultsTo: '40000', help: 'Maximum RAM to test in MB (default: 40000)')
+        help: 'Maximum RAM to test in MB (overrides JSON config)')
     ..addOption('threshold',
-        defaultsTo: '500', help: 'Stop threshold in MB (default: 500)')
+        help: 'Stop threshold in MB (overrides JSON config)')
     ..addOption('output',
         abbr: 'o', help: 'Output file path to save summary table as CSV')
     ..addFlag('help',
@@ -205,9 +382,6 @@ void main(List<String> arguments) async {
     final repoBranch = results['repo-branch'] as String;
 
     final teamName = results['team-name'] as String;
-    final minRamMb = double.parse(results['min-ram'] as String);
-    final maxRamMb = double.parse(results['max-ram'] as String);
-    final thresholdMb = double.parse(results['threshold'] as String);
     final outputFile = results['output'] as String?;
 
     // Initialize Tercen session first
@@ -228,6 +402,102 @@ void main(List<String> arguments) async {
         tag: repoVersion);
     print("\tInstalled test project");
 
+    // Load operator.json to get enumeration definitions
+    print("\nLoading operator.json...");
+    final enumerations = await fetchOperatorEnumerations(
+      repoUrl: repoUrl,
+      teamName: "memory_test_library",
+      tag: repoVersion,
+    );
+
+    // Load memory_tests.json from the installed operator project
+    print("\nLoading configuration from memory_tests.json...");
+    final config = await fetchMemoryTestConfig(
+      repoUrl: repoUrl,
+      teamName: "memory_test_library",
+      tag: repoVersion,
+    );
+
+    // Merge configurations: CLI > JSON > Defaults
+    // Helper to get value with precedence: CLI arg > JSON > default
+    String getConfigValue(String cliKey, String? jsonKey, String defaultValue) {
+      final cliValue = results[cliKey] as String?;
+      if (cliValue != null && cliValue.isNotEmpty) return cliValue;
+
+      if (jsonKey != null) {
+        if (jsonKey.startsWith('data_params.')) {
+          final key = jsonKey.substring('data_params.'.length);
+          final value = config.dataParams?[key];
+          if (value != null) return value.toString();
+        } else if (jsonKey.startsWith('ram_limits.')) {
+          final key = jsonKey.substring('ram_limits.'.length);
+          final value = config.ramLimits?[key];
+          if (value != null) return value.toString();
+        }
+      }
+
+      return defaultValue;
+    }
+
+    final minRamMb = double.parse(getConfigValue('min-ram', 'ram_limits.min_ram_mb', '500'));
+    final maxRamMb = double.parse(getConfigValue('max-ram', 'ram_limits.max_ram_mb', '40000'));
+    final thresholdMb = double.parse(getConfigValue('threshold', 'ram_limits.threshold_mb', '500'));
+
+    // Merge operator settings from JSON and CLI
+    final mergedOperatorSettings = <String, String>{
+      ...?config.operatorSettings, // JSON settings first
+      ...operatorSettings, // CLI settings override
+    };
+    final mergedOperatorSettingRanges = <String, List<double>>{
+      ...operatorSettingRanges, // CLI ranges (if any)
+    };
+
+    // Process enumeration settings - expand special syntax
+    final enumSettingRanges = <String, List<String>>{};
+    final settingsToRemove = <String>[];
+
+    for (var entry in mergedOperatorSettings.entries) {
+      final settingName = entry.key;
+      final settingValue = entry.value;
+
+      // Check if this is an enumeration property
+      if (enumerations.containsKey(settingName)) {
+        final enumProp = enumerations[settingName]!;
+
+        // Check for special syntax: "*" = all values, or comma-separated list
+        if (settingValue == '*') {
+          // Test all enum values
+          enumSettingRanges[settingName] = List.from(enumProp.values);
+          settingsToRemove.add(settingName);
+          print("  Enumeration '$settingName': testing all values ${enumProp.values}");
+        } else if (settingValue.contains(',')) {
+          // Test specific subset of enum values
+          final selectedValues = settingValue.split(',').map((v) => v.trim()).toList();
+          // Validate all values are valid
+          for (var val in selectedValues) {
+            if (!enumProp.values.contains(val)) {
+              throw Exception(
+                "Invalid value '$val' for enumeration '$settingName'. Valid values: ${enumProp.values}");
+            }
+          }
+          enumSettingRanges[settingName] = selectedValues;
+          settingsToRemove.add(settingName);
+          print("  Enumeration '$settingName': testing values $selectedValues");
+        } else {
+          // Single value - validate it
+          if (!enumProp.values.contains(settingValue)) {
+            throw Exception(
+              "Invalid value '$settingValue' for enumeration '$settingName'. Valid values: ${enumProp.values}");
+          }
+        }
+      }
+    }
+
+    // Remove enumeration settings that have been converted to ranges
+    for (var key in settingsToRemove) {
+      mergedOperatorSettings.remove(key);
+    }
+
 
     // SETUP Test Project - declare outside try block for cleanup access
     Map<String, String>? projectMap;
@@ -243,7 +513,7 @@ void main(List<String> arguments) async {
       tableStepId = projectMap["tableStepId"];
       workflowId = projectMap["workflowId"];
 
-      // Parse synthetic data parameters (support ranges)
+      // Parse synthetic data parameters (support ranges) with merged config
       final dataParamRanges = <String, List<int>>{};
       int? nObsSingle;
       int? nSpSingle;
@@ -254,7 +524,15 @@ void main(List<String> arguments) async {
         {'name': 'n-sp', 'key': 'n_sp'},
         {'name': 'n-variable', 'key': 'n_variable'}
       ]) {
-        final value = results[param['name']!] as String;
+        final value = getConfigValue(param['name']!, 'data_params.${param['key']!}', '');
+        if (value.isEmpty) {
+          // Use default if not in CLI or JSON
+          if (param['key'] == 'n_obs') nObsSingle = 500;
+          if (param['key'] == 'n_sp') nSpSingle = 4;
+          if (param['key'] == 'n_variable') nVariableSingle = 4;
+          continue;
+        }
+
         if (value.contains(':')) {
           final parts = value.split(':');
           if (parts.length == 3) {
@@ -282,21 +560,25 @@ void main(List<String> arguments) async {
       }
 
       // Check if we need to do grid search
-      if (operatorSettingRanges.isNotEmpty || dataParamRanges.isNotEmpty) {
+      if (mergedOperatorSettingRanges.isNotEmpty || enumSettingRanges.isNotEmpty || dataParamRanges.isNotEmpty) {
         // Grid search mode
         final totalCombos = (dataParamRanges.values.isEmpty
                 ? 1
                 : dataParamRanges.values.fold(1, (p, l) => p * l.length)) *
-            (operatorSettingRanges.values.isEmpty
+            (mergedOperatorSettingRanges.values.isEmpty
                 ? 1
-                : operatorSettingRanges.values.fold(1, (p, l) => p * l.length));
+                : mergedOperatorSettingRanges.values.fold(1, (p, l) => p * l.length)) *
+            (enumSettingRanges.values.isEmpty
+                ? 1
+                : enumSettingRanges.values.fold(1, (p, l) => p * l.length));
         print('Grid search mode: Testing $totalCombos combinations');
 
         // Generate all combinations
         final combinations = _generateCombinedGrid(
           dataRanges: dataParamRanges,
-          settingRanges: operatorSettingRanges,
-          fixedSettings: operatorSettings,
+          settingRanges: mergedOperatorSettingRanges,
+          enumRanges: enumSettingRanges,
+          fixedSettings: mergedOperatorSettings,
           nObsDefault: nObsSingle,
           nSpDefault: nSpSingle,
           nVariableDefault: nVariableSingle,
@@ -315,8 +597,9 @@ void main(List<String> arguments) async {
 
         // Add operator settings params (sorted), prefixed with "settings."
         final settingNames = <String>{
-          ...operatorSettingRanges.keys,
-          ...operatorSettings.keys
+          ...mergedOperatorSettingRanges.keys,
+          ...enumSettingRanges.keys,
+          ...mergedOperatorSettings.keys
         }.toList()
           ..sort();
         allParamNames.addAll(settingNames.map((name) => 'settings.$name'));
@@ -428,9 +711,9 @@ void main(List<String> arguments) async {
         }
       } else {
         // Single run mode
-        if (operatorSettings.isNotEmpty) {
+        if (mergedOperatorSettings.isNotEmpty) {
           print('Operator settings:');
-          operatorSettings.forEach((key, value) {
+          mergedOperatorSettings.forEach((key, value) {
             print('  $key = $value');
           });
         }
@@ -447,7 +730,7 @@ void main(List<String> arguments) async {
           minRamMb: minRamMb,
           maxRamMb: maxRamMb,
           thresholdMb: thresholdMb,
-          operatorSettings: operatorSettings,
+          operatorSettings: mergedOperatorSettings,
         );
 
         await estimator.run();
