@@ -67,9 +67,10 @@ Future<Map<String, EnumeratedProperty>> fetchOperatorEnumerations({
   required String repoUrl,
   required String teamName,
   String? tag,
+  String? branch,
 }) async {
-  final tagName = tag ?? "latest";
-  final projectName = "$repoUrl@${tagName}_Test";
+  final versionRef = tag ?? branch ?? "latest";
+  final projectName = "$repoUrl@${versionRef}_Test";
 
   print("Fetching operator.json to extract enumeration properties...");
 
@@ -135,9 +136,10 @@ Future<MemoryTestConfig> fetchMemoryTestConfig({
   required String repoUrl,
   required String teamName,
   String? tag,
+  String? branch,
 }) async {
-  final tagName = tag ?? "latest";
-  final projectName = "$repoUrl@${tagName}_Test";
+  final versionRef = tag ?? branch ?? "latest";
+  final projectName = "$repoUrl@${versionRef}_Test";
 
   print("Fetching memory_tests.json from project: $projectName");
 
@@ -342,6 +344,7 @@ void main(List<String> arguments) async {
       repoUrl: repoUrl,
       teamName: "memory_test_library",
       tag: repoVersion,
+      branch: repoVersion == null ? repoBranch : null,
     );
 
     // Load memory_tests.json from the installed operator project
@@ -350,6 +353,7 @@ void main(List<String> arguments) async {
       repoUrl: repoUrl,
       teamName: "memory_test_library",
       tag: repoVersion,
+      branch: repoVersion == null ? repoBranch : null,
     );
 
     // Verify config is valid - at least one section must be present
