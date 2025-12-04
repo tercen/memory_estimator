@@ -350,6 +350,15 @@ void main(List<String> arguments) async {
       tag: repoVersion,
     );
 
+    // Verify config is valid - at least one section must be present
+    if (config.dataParams == null &&
+        config.ramLimits == null &&
+        config.operatorSettings == null) {
+      throw Exception(
+        "Invalid memory_tests.json: File is empty or missing required sections.\n"
+        "The file must contain at least one of: data_params, ram_limits, or operator_settings");
+    }
+
     // Get configuration values from JSON with defaults
     String getConfigValue(String jsonKey, String defaultValue) {
       if (jsonKey.startsWith('data_params.')) {
@@ -513,6 +522,20 @@ void main(List<String> arguments) async {
           if (param['key'] == 'n_sp') nSpSingle = intValue;
           if (param['key'] == 'n_variable') nVariableSingle = intValue;
         }
+      }
+
+      // Validate that at least some test configuration exists
+      if (operatorSettingRanges.isEmpty &&
+          enumSettingRanges.isEmpty &&
+          dataParamRanges.isEmpty &&
+          (nObsSingle == null || nSpSingle == null || nVariableSingle == null)) {
+        throw Exception(
+          "Invalid configuration: No test parameters defined.\n"
+          "memory_tests.json must define either:\n"
+          "  - Ranges for data_params (e.g., 'n_obs': '500:2:5000')\n"
+          "  - Ranges for operator_settings\n"
+          "  - Enumeration values for operator properties\n"
+          "  - Single values for all required data parameters");
       }
 
       // Check if we need to do grid search
