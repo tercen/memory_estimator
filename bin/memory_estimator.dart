@@ -322,15 +322,17 @@ void main(List<String> arguments) async {
         user: username, passw: password, serviceUrl: serviceUri);
 
     //Set up library team
+    // Determine the version string for display and installation
+    final versionRef = repoVersion ?? repoBranch;
     print(
-        "Setting library 'memory_test_library' with project $repoUrl@${repoVersion ?? "main"} for user $teamName");
+        "Setting library 'memory_test_library' with project $repoUrl@$versionRef for user $teamName");
     await UserDataService()
         .createTeam(teamName: "memory_test_library", owner: teamName, isLibrary: true);
     print("\tCreated library team");
     await LibraryDataService.installOperator(
         url: repoUrl,
         team: "memory_test_library",
-        branch: repoBranch,
+        branch: repoVersion == null ? repoBranch : null,
         tag: repoVersion);
     print("\tInstalled test project");
 
