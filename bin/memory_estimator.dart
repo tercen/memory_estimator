@@ -86,21 +86,9 @@ Future<Map<String, EnumeratedProperty>> fetchOperatorEnumerations({
   for (final name in possibleNames) {
     // Use lower-level API without caching to find the most recent project
     // Multiple projects with same name can exist; we want the most recent one
-    final projects = await tercen.ServiceFactory()
-        .projectDocumentService
-        .findProjectByName(teamName, name, 0, 100);
+    project = await ProjectDataService()
+        .fetchProjectByName(projectName: name, owner: teamName, useCache: false);
 
-    if (projects.isNotEmpty) {
-      // If multiple projects with same name exist, use the most recently modified one
-      projects.sort((a, b) {
-        final aTime = a.lastModifiedDate?.millisecondsSinceEpoch ?? 0;
-        final bTime = b.lastModifiedDate?.millisecondsSinceEpoch ?? 0;
-        return bTime.compareTo(aTime); // Descending order
-      });
-      project = projects.first;
-      projectName = name;
-      break;
-    }
   }
 
   if (project == null) {
@@ -182,21 +170,8 @@ Future<MemoryTestConfig> fetchMemoryTestConfig({
   for (final name in possibleNames) {
     // Use lower-level API without caching to find the most recent project
     // Multiple projects with same name can exist; we want the most recent one
-    final projects = await tercen.ServiceFactory()
-        .projectDocumentService
-        .findProjectByName(teamName, name, 0, 100);
-
-    if (projects.isNotEmpty) {
-      // If multiple projects with same name exist, use the most recently modified one
-      projects.sort((a, b) {
-        final aTime = a.lastModifiedDate?.millisecondsSinceEpoch ?? 0;
-        final bTime = b.lastModifiedDate?.millisecondsSinceEpoch ?? 0;
-        return bTime.compareTo(aTime); // Descending order
-      });
-      project = projects.first;
-      projectName = name;
-      break;
-    }
+    project = await ProjectDataService()
+        .fetchProjectByName(projectName: name, owner: teamName, useCache: false);
   }
 
   if (project == null) {
