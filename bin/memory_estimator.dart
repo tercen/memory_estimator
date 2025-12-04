@@ -70,18 +70,34 @@ Future<Map<String, EnumeratedProperty>> fetchOperatorEnumerations({
   String? branch,
 }) async {
   final versionRef = tag ?? branch ?? "latest";
-  final projectName = "$repoUrl@${versionRef}_Test";
 
   print("Fetching operator.json to extract enumeration properties...");
 
-  // Fetch the project
-  final project = await ProjectDataService()
-      .fetchProjectByName(projectName: projectName, owner: teamName);
+  // Try different naming conventions used by installOperator
+  final possibleNames = [
+    "$repoUrl@${versionRef}_Test",  // Standard convention with tag
+    "$repoUrl@${versionRef}Test",   // Without underscore
+    "$repoUrl@latest_Test",          // Falls back to latest
+  ];
+
+  sci.Project? project;
+  String? projectName;
+
+  for (final name in possibleNames) {
+    project = await ProjectDataService()
+        .fetchProjectByName(projectName: name, owner: teamName);
+    if (project != null) {
+      projectName = name;
+      break;
+    }
+  }
 
   if (project == null) {
     throw Exception(
-        "Operator project not found: $projectName. Ensure the operator was installed correctly.");
+        "Operator project not found. Tried names: ${possibleNames.join(', ')}. Ensure the operator was installed correctly.");
   }
+
+  print("  Found project: $projectName");
 
   // Find the operator.json file in the project
   try {
@@ -139,18 +155,34 @@ Future<MemoryTestConfig> fetchMemoryTestConfig({
   String? branch,
 }) async {
   final versionRef = tag ?? branch ?? "latest";
-  final projectName = "$repoUrl@${versionRef}_Test";
 
-  print("Fetching memory_tests.json from project: $projectName");
+  print("Fetching memory_tests.json...");
 
-  // Fetch the project
-  final project = await ProjectDataService()
-      .fetchProjectByName(projectName: projectName, owner: teamName);
+  // Try different naming conventions used by installOperator
+  final possibleNames = [
+    "$repoUrl@${versionRef}_Test",  // Standard convention with tag
+    "$repoUrl@${versionRef}Test",   // Without underscore
+    "$repoUrl@latest_Test",          // Falls back to latest
+  ];
+
+  sci.Project? project;
+  String? projectName;
+
+  for (final name in possibleNames) {
+    project = await ProjectDataService()
+        .fetchProjectByName(projectName: name, owner: teamName);
+    if (project != null) {
+      projectName = name;
+      break;
+    }
+  }
 
   if (project == null) {
     throw Exception(
-        "Operator project not found: $projectName. Ensure the operator was installed correctly.");
+        "Operator project not found. Tried names: ${possibleNames.join(', ')}. Ensure the operator was installed correctly.");
   }
+
+  print("  Found project: $projectName");
 
   // Find the memory_tests.json file in the project
   try {
