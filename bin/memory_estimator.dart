@@ -64,39 +64,9 @@ class EnumeratedProperty {
 
 /// Fetch operator.json from the installed operator project in Tercen
 Future<Map<String, EnumeratedProperty>> fetchOperatorEnumerations({
-  required String repoUrl,
-  required String teamName,
-  String? tag,
-  String? branch,
+  required sci.Project project,
 }) async {
-  final versionRef = tag ?? branch ?? "latest";
-
-  print("Fetching operator.json to extract enumeration properties...");
-
-  // Try different naming conventions used by installOperator
-  final possibleNames = [
-    "$repoUrl@${versionRef}_Test",  // Standard convention with tag
-    "$repoUrl@${versionRef}Test",   // Without underscore
-    "$repoUrl@latest_Test",          // Falls back to latest
-  ];
-
-  sci.Project? project;
-  String? projectName;
-
-  for (final name in possibleNames) {
-    // Use lower-level API without caching to find the most recent project
-    // Multiple projects with same name can exist; we want the most recent one
-    project = await ProjectDataService()
-        .fetchProjectByName(projectName: name, owner: teamName, useCache: false);
-    projectName = project?.name;
-  }
-
-  if (project == null) {
-    throw Exception(
-        "Operator project not found. Tried names: ${possibleNames.join(', ')}. Ensure the operator was installed correctly.");
-  }
-
-  print("  Found project: $projectName (ID: ${project.id})");
+  print("Fetching operator.json from project: ${project.name} (ID: ${project.id})");
 
   // Find the operator.json file in the project
   try {
@@ -109,7 +79,7 @@ Future<Map<String, EnumeratedProperty>> fetchOperatorEnumerations({
     final operatorDoc = docs.firstWhere(
       (doc) => doc.name == "operator.json",
       orElse: () => throw Exception(
-          "operator.json not found in project $projectName."),
+          "operator.json not found in project ${project.name}."),
     );
 
     // Get the file content as stream and convert to bytes
@@ -148,39 +118,9 @@ Future<Map<String, EnumeratedProperty>> fetchOperatorEnumerations({
 
 /// Fetch memory_tests.json from the installed operator project in Tercen
 Future<MemoryTestConfig> fetchMemoryTestConfig({
-  required String repoUrl,
-  required String teamName,
-  String? tag,
-  String? branch,
+  required sci.Project project,
 }) async {
-  final versionRef = tag ?? branch ?? "latest";
-
-  print("Fetching memory_tests.json...");
-
-  // Try different naming conventions used by installOperator
-  final possibleNames = [
-    "$repoUrl@${versionRef}_Test",  // Standard convention with tag
-    "$repoUrl@${versionRef}Test",   // Without underscore
-    "$repoUrl@latest_Test",          // Falls back to latest
-  ];
-
-  sci.Project? project;
-  String? projectName;
-
-  for (final name in possibleNames) {
-    // Use lower-level API without caching to find the most recent project
-    // Multiple projects with same name can exist; we want the most recent one
-    project = await ProjectDataService()
-        .fetchProjectByName(projectName: name, owner: teamName, useCache: false);
-    projectName = project?.name;
-  }
-
-  if (project == null) {
-    throw Exception(
-        "Operator project not found. Tried names: ${possibleNames.join(', ')}. Ensure the operator was installed correctly.");
-  }
-
-  print("  Found project: $projectName (ID: ${project.id})");
+  print("Fetching memory_tests.json from project: ${project.name} (ID: ${project.id})");
 
   // Find the memory_tests.json file in the project
   try {
@@ -194,7 +134,7 @@ Future<MemoryTestConfig> fetchMemoryTestConfig({
     final memoryTestDoc = docs.firstWhere(
       (doc) => doc.name == "memory_tests.json",
       orElse: () => throw Exception(
-          "memory_tests.json not found in project $projectName. This file is required at the root of the operator repository."),
+          "memory_tests.json not found in project ${project.name}. This file is required at the root of the operator repository."),
     );
 
 
@@ -362,31 +302,25 @@ void main(List<String> arguments) async {
         .createTeam(teamName: "memory_test_library", owner: teamName, isLibrary: true);
     print("\tCreated library team");
 
-    // When using a branch (no tag), installOperator creates a project named with "latest"
-    // but pulls from the specified branch. We need to look for the project with "latest" suffix.
-    await LibraryDataService.installOperator(
+    // Install operator and get the project it was installed to
+    print("\tInstalling operator...");
+    final installedProject = await LibraryDataService.installOperator(
         url: repoUrl,
         team: "memory_test_library",
         branch: repoVersion == null ? repoBranch : null,
         tag: repoVersion);
-    print("\tInstalled test project (will be named with 'latest' or tag name)");
+    print("\tInstalled to project: ${installedProject.name} (ID: ${installedProject.id})");
 
     // Load operator.json to get enumeration definitions
     print("\nLoading operator.json...");
     final enumerations = await fetchOperatorEnumerations(
-      repoUrl: repoUrl,
-      teamName: "memory_test_library",
-      tag: repoVersion,
-      branch: repoVersion == null ? repoBranch : null,
+      project: installedProject,
     );
 
     // Load memory_tests.json from the installed operator project
     print("\nLoading configuration from memory_tests.json...");
     final config = await fetchMemoryTestConfig(
-      repoUrl: repoUrl,
-      teamName: "memory_test_library",
-      tag: repoVersion,
-      branch: repoVersion == null ? repoBranch : null,
+      project: installedProject,
     );
 
     // Verify config is valid - at least one section must be present
