@@ -84,9 +84,20 @@ Future<Map<String, EnumeratedProperty>> fetchOperatorEnumerations({
   String? projectName;
 
   for (final name in possibleNames) {
-    project = await ProjectDataService()
-        .fetchProjectByName(projectName: name, owner: teamName);
-    if (project != null) {
+    // Use lower-level API without caching to find the most recent project
+    // Multiple projects with same name can exist; we want the most recent one
+    final projects = await tercen.ServiceFactory()
+        .projectDocumentService
+        .findProjectByName(teamName, name, 0, 100);
+
+    if (projects.isNotEmpty) {
+      // If multiple projects with same name exist, use the most recently modified one
+      projects.sort((a, b) {
+        final aTime = a.lastModifiedDate?.millisecondsSinceEpoch ?? 0;
+        final bTime = b.lastModifiedDate?.millisecondsSinceEpoch ?? 0;
+        return bTime.compareTo(aTime); // Descending order
+      });
+      project = projects.first;
       projectName = name;
       break;
     }
@@ -97,7 +108,7 @@ Future<Map<String, EnumeratedProperty>> fetchOperatorEnumerations({
         "Operator project not found. Tried names: ${possibleNames.join(', ')}. Ensure the operator was installed correctly.");
   }
 
-  print("  Found project: $projectName");
+  print("  Found project: $projectName (ID: ${project.id})");
 
   // Find the operator.json file in the project
   try {
@@ -169,9 +180,20 @@ Future<MemoryTestConfig> fetchMemoryTestConfig({
   String? projectName;
 
   for (final name in possibleNames) {
-    project = await ProjectDataService()
-        .fetchProjectByName(projectName: name, owner: teamName);
-    if (project != null) {
+    // Use lower-level API without caching to find the most recent project
+    // Multiple projects with same name can exist; we want the most recent one
+    final projects = await tercen.ServiceFactory()
+        .projectDocumentService
+        .findProjectByName(teamName, name, 0, 100);
+
+    if (projects.isNotEmpty) {
+      // If multiple projects with same name exist, use the most recently modified one
+      projects.sort((a, b) {
+        final aTime = a.lastModifiedDate?.millisecondsSinceEpoch ?? 0;
+        final bTime = b.lastModifiedDate?.millisecondsSinceEpoch ?? 0;
+        return bTime.compareTo(aTime); // Descending order
+      });
+      project = projects.first;
       projectName = name;
       break;
     }
@@ -182,7 +204,7 @@ Future<MemoryTestConfig> fetchMemoryTestConfig({
         "Operator project not found. Tried names: ${possibleNames.join(', ')}. Ensure the operator was installed correctly.");
   }
 
-  print("  Found project: $projectName");
+  print("  Found project: $projectName (ID: ${project.id})");
 
   // Find the memory_tests.json file in the project
   try {
@@ -363,12 +385,15 @@ void main(List<String> arguments) async {
     await UserDataService()
         .createTeam(teamName: "memory_test_library", owner: teamName, isLibrary: true);
     print("\tCreated library team");
+
+    // When using a branch (no tag), installOperator creates a project named with "latest"
+    // but pulls from the specified branch. We need to look for the project with "latest" suffix.
     await LibraryDataService.installOperator(
         url: repoUrl,
         team: "memory_test_library",
         branch: repoVersion == null ? repoBranch : null,
         tag: repoVersion);
-    print("\tInstalled test project");
+    print("\tInstalled test project (will be named with 'latest' or tag name)");
 
     // Load operator.json to get enumeration definitions
     print("\nLoading operator.json...");
