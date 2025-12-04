@@ -88,7 +88,7 @@ Future<Map<String, EnumeratedProperty>> fetchOperatorEnumerations({
     // Multiple projects with same name can exist; we want the most recent one
     project = await ProjectDataService()
         .fetchProjectByName(projectName: name, owner: teamName, useCache: false);
-
+    projectName = project?.name;
   }
 
   if (project == null) {
@@ -172,6 +172,7 @@ Future<MemoryTestConfig> fetchMemoryTestConfig({
     // Multiple projects with same name can exist; we want the most recent one
     project = await ProjectDataService()
         .fetchProjectByName(projectName: name, owner: teamName, useCache: false);
+    projectName = project?.name;
   }
 
   if (project == null) {
