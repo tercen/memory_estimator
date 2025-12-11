@@ -2,6 +2,12 @@
 
 A command-line tool for estimating memory requirements for Tercen workflows through automated testing with synthetic data.
 
+## TODO Features
+- [ ] Use OperatorSpecs to define qt, column, and row features
+- [ ] Add support for more synthetic data distributions
+- [ ] Use Tercen Control to remove the necessity of the memory_workflow template workflow inside the operator project
+
+
 ## Overview
 
 The Memory Estimator performs automated RAM requirement analysis by:
